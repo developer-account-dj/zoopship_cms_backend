@@ -1,74 +1,183 @@
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from .models import Page
-from .serializers import PageSerializer
+from rest_framework import status, viewsets
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
+from .models import (
+    Page, FAQ, BlogPost, Banner, NavigationItem,
+    ContactInfo, HowItWorks, Impression, Feature, Section
+)
+from .serializers import (
+    PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
+    NavigationItemSerializer, ContactInfoSerializer, HowItWorksSerializer,
+    ImpressionSerializer, FeatureSerializer, SectionSerializer
+)
+from core.utils.response_helpers import success_response, error_response
 
-class PageViewSet(viewsets.ModelViewSet):
+
+# ==========================
+# BASE VIEWSET
+# ==========================
+class BaseViewSet(viewsets.ModelViewSet):
+    """
+    Base viewset to handle create/update/destroy with success/error responses.
+    Other viewsets inherit from this.
+    """
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.filter_queryset(self.get_queryset()), many=True)
+        return success_response(data=serializer.data, message=f"{self.basename.title()} list fetched")
+
+    def retrieve(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_object())
+        return success_response(data=serializer.data, message=f"{self.basename.title()} fetched")
+
+    def destroy(self, request, *args, **kwargs):
+        self.get_object().delete()
+        return success_response(message=f"{self.basename.title()} deleted")
+
+
+# ==========================
+# PAGE VIEWSET
+# ==========================
+class PageViewSet(BaseViewSet):
     queryset = Page.objects.all()
     serializer_class = PageSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
-    lookup_field = 'slug'
+    lookup_field = "slug"
 
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, updated_by=self.request.user)
-
-    def perform_update(self, serializer):
-        serializer.save(updated_by=self.request.user)
+    def get_queryset(self):
+        return Page.objects.filter(is_active=True).order_by("-created_at")
 
 
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from content.models import FAQ
-from .serializers import FAQSerializer
-
-class FAQViewSet(viewsets.ModelViewSet):
-    queryset = FAQ.objects.all().order_by('order')
+# ==========================
+# FAQ VIEWSET
+# ==========================
+class FAQViewSet(BaseViewSet):
+    queryset = FAQ.objects.all().order_by("order")
     serializer_class = FAQSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, updated_by=self.request.user)
-
-    def perform_update(self, serializer):
-        serializer.save(updated_by=self.request.user)
+    # def get_queryset(self):
+    #     return FAQ.objects.filter(is_active=True).order_by("-created_at")
 
 
-
-from content.models import BlogPost
-from content.serializers import BlogPostSerializer
-
-class BlogPostViewSet(viewsets.ModelViewSet):
-    queryset = BlogPost.objects.all().order_by('-created_at')
+# ==========================
+# BLOGPOST VIEWSET
+# ==========================
+class BlogPostViewSet(BaseViewSet):
+    queryset = BlogPost.objects.all().order_by("-created_at")
     serializer_class = BlogPostSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, updated_by=self.request.user)
-
-    def perform_update(self, serializer):
-        serializer.save(updated_by=self.request.user)
-
-  
+    # def get_queryset(self):
+    #     return BlogPost.objects.filter(is_active=True).order_by("-created_at")
 
 
-
-from content.models import Banner
-from content.serializers import BannerSerializer
-from django.utils import timezone
-class BannerViewSet(viewsets.ModelViewSet):
+# ==========================
+# BANNER VIEWSET
+# ==========================
+class BannerViewSet(BaseViewSet):
+    queryset = Banner.objects.all()
     serializer_class = BannerSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
+    # def get_queryset(self):
+    #     return Banner.objects.filter(is_active=True).order_by("-created_at")
+
+
+# ==========================
+# NAVIGATION VIEWSET
+# ==========================
+class NavigationViewSet(BaseViewSet):
+    queryset = NavigationItem.objects.all()
+    serializer_class = NavigationItemSerializer
+    lookup_field = "id"
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
     def get_queryset(self):
-        now = timezone.now()
-        # Return banners where is_active=True and current datetime is between start_date and end_date
-        return Banner.objects.filter(
-            is_active=True,
-            start_date__lte=now,
-            end_date__gte=now
-        ).order_by('-start_date')
+        if self.action == "list":
+            return NavigationItem.objects.filter(parent__isnull=True, is_active=True).order_by("order")
+        return super().get_queryset()
 
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, updated_by=self.request.user)
 
-    def perform_update(self, serializer):
-        serializer.save(updated_by=self.request.user)
+# ==========================
+# CONTACT INFO VIEWSET
+# ==========================
+class ContactInfoViewSet(BaseViewSet):
+    queryset = ContactInfo.objects.all()
+    serializer_class = ContactInfoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # def get_queryset(self):
+    #     return ContactInfo.objects.filter(is_active=True).order_by("-created_at")
+
+
+# ==========================
+# HOW IT WORKS VIEWSET
+# ==========================
+class HowItWorksViewSet(BaseViewSet):
+    queryset = HowItWorks.objects.all()
+    serializer_class = HowItWorksSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # def get_queryset(self):
+    #     return HowItWorks.objects.filter(is_active=True).order_by("-created_at")
+
+
+# ==========================
+# IMPRESSION VIEWSET
+# ==========================
+class ImpressionViewSet(BaseViewSet):
+    queryset = Impression.objects.all()
+    serializer_class = ImpressionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # def get_queryset(self):
+    #     return Impression.objects.filter(is_active=True).order_by("-created_at")
+
+
+# ==========================
+# FEATURE VIEWSET
+# ==========================
+class FeatureViewSet(BaseViewSet):
+    queryset = Feature.objects.all()
+    serializer_class = FeatureSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # def get_queryset(self):
+    #     return Feature.objects.filter(is_active=True).order_by("-created_at")
+
+
+# ==========================
+# SECTION VIEWSET
+# ==========================
+class SectionViewSet(BaseViewSet):
+    queryset = Section.objects.all()
+    serializer_class = SectionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # def get_queryset(self):
+    #     return Section.objects.filter(is_active=True).order_by("-created_at")
+
+
+
+from .models import PageSection
+from .serializers import PageSectionSerializer
+
+class PageSectionViewSet(viewsets.ModelViewSet):
+    queryset = PageSection.objects.all()
+    serializer_class = PageSectionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    # def get_queryset(self):
+    #     return PageSection.objects.filter(is_active=True,section__is_active=True).order_by("-created_at")
+
+
