@@ -1,1 +1,9 @@
 /venv
+
+# Ignore all migration files
+**/migrations/*.py
+**/migrations/*.pyc
+!**/migrations/__init__.py  # Keeps the folder recognized as a Python package
+
+# Ignore Django settings
+**/settings.py

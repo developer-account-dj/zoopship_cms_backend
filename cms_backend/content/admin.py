@@ -1,7 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Page, FAQ, BlogPost, Banner, HowItWorks, Feature, Impression, Section,
-    NavigationItem, ContactInfo,PageSection
+    Page, FAQ, BlogPost, Banner, HowItWorks, Feature, Impression, Section, ContactInfo, PageSection
 )
 
 # -------------------------
@@ -9,11 +8,12 @@ from .models import (
 # -------------------------
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
-    list_display = ("id", 'title', 'slug', 'is_active', 'created_at', 'updated_at')
-    list_filter = ('is_active',)
-    search_fields = ('title', 'content')
-    prepopulated_fields = {'slug': ('title',)}
-    actions = ['publish_pages', 'unpublish_pages']
+    list_display = ("id", "title", "slug", "parent", "order", "is_active", "created_at", "updated_at")
+    list_filter = ("is_active", "created_at")
+    search_fields = ("title", "content", "slug")
+    prepopulated_fields = {"slug": ("title",)}
+    ordering = ("parent__id", "order")  # parent-child ordering
+    actions = ["publish_pages", "unpublish_pages"]
 
     @admin.action(description="Publish selected pages")
     def publish_pages(self, request, queryset):
@@ -52,11 +52,11 @@ class SectionAdmin(admin.ModelAdmin):
 # -------------------------
 @admin.register(FAQ)
 class FAQAdmin(admin.ModelAdmin):
-    list_display = ("id", 'question', 'is_active', 'created_at', 'updated_at')
-    list_filter = ('is_active',)
-    search_fields = ('question', 'answer')
-    ordering = ('order',)
-    actions = ['activate_faqs', 'deactivate_faqs']
+    list_display = ("id", "question", "is_active", "order", "created_at", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("question", "answer")
+    ordering = ("order",)
+    actions = ["activate_faqs", "deactivate_faqs"]
 
     @admin.action(description="Activate selected FAQs")
     def activate_faqs(self, request, queryset):
@@ -77,7 +77,7 @@ class BannerAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "is_active", "created_at", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("title",)
-    actions = ['activate_banners', 'deactivate_banners']
+    actions = ["activate_banners", "deactivate_banners"]
 
     @admin.action(description="Activate selected banners")
     def activate_banners(self, request, queryset):
@@ -95,11 +95,11 @@ class BannerAdmin(admin.ModelAdmin):
 # -------------------------
 @admin.register(BlogPost)
 class BlogPostAdmin(admin.ModelAdmin):
-    list_display = ("id", 'title', 'author', 'slug', 'is_active', 'created_at', 'updated_at')
-    list_filter = ('is_active', 'author')
-    search_fields = ('title', 'summary', 'content')
-    prepopulated_fields = {'slug': ('title',)}
-    actions = ['publish_posts', 'unpublish_posts']
+    list_display = ("id", "title", "author", "slug", "is_active", "created_at", "updated_at")
+    list_filter = ("is_active", "author")
+    search_fields = ("title", "summary", "content")
+    prepopulated_fields = {"slug": ("title",)}
+    actions = ["publish_posts", "unpublish_posts"]
 
     @admin.action(description="Publish selected blog posts")
     def publish_posts(self, request, queryset):
@@ -117,11 +117,11 @@ class BlogPostAdmin(admin.ModelAdmin):
 # -------------------------
 @admin.register(Feature)
 class FeatureAdmin(admin.ModelAdmin):
-    list_display = ("id",'title', 'order', 'is_active', 'created_at', 'updated_at')
-    list_filter = ('is_active',)
-    search_fields = ('title', 'description')
-    ordering = ('order',)
-    readonly_fields = ('created_at', 'updated_at')
+    list_display = ("id", "title", "order", "is_active", "created_at", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("title", "description")
+    ordering = ("order",)
+    readonly_fields = ("created_at", "updated_at")
 
 
 # -------------------------
@@ -147,27 +147,17 @@ class HowItWorksAdmin(admin.ModelAdmin):
 # -------------------------
 @admin.register(Impression)
 class ImpressionAdmin(admin.ModelAdmin):
-    list_display = ('id', "type", "title", "is_active", 'description', 'created_at', 'updated_at')
-    search_fields = ('title', 'description')
-    list_filter = ('is_active', 'created_at', 'updated_at')
-    ordering = ('-created_at',)
-    readonly_fields = ('created_by', 'updated_by', 'created_at', 'updated_at')
+    list_display = ("id", "type", "title", "is_active", "description", "created_at", "updated_at")
+    search_fields = ("title", "description")
+    list_filter = ("is_active", "created_at", "updated_at")
+    ordering = ("-created_at",)
+    readonly_fields = ("created_by", "updated_by", "created_at", "updated_at")
 
     def save_model(self, request, obj, form, change):
         if not obj.pk:
             obj.created_by = request.user
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
-
-
-# -------------------------
-# NavigationItem Admin
-# -------------------------
-@admin.register(NavigationItem)
-class NavigationItemAdmin(admin.ModelAdmin):
-    list_display = ("id",'title', 'parent_id', 'order', 'is_active')
-    list_filter = ('is_active',)
-    ordering = ('order',)
 
 
 # -------------------------
@@ -181,7 +171,12 @@ class ContactInfoAdmin(admin.ModelAdmin):
     ordering = ("contact_type", "order")
 
 
-
+# -------------------------
+# PageSection Admin
+# -------------------------
 @admin.register(PageSection)
 class PageSectionAdmin(admin.ModelAdmin):
-    list_display = ("id","page","is_active", "created_at")
+    list_display = ("id", "page", "section", "order", "is_active", "created_at", "updated_at")
+    list_filter = ("is_active", "page")
+    search_fields = ("page__title", "section__title")
+    ordering = ("page", "order")

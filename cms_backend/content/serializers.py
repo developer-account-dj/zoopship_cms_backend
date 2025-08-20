@@ -4,7 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from .models import (
     Page, FAQ, BlogPost, Banner, HowItWorks,
-    Impression, Feature, NavigationItem, ContactInfo,
+    Impression, Feature, ContactInfo,
     Section, PageSection
 )
 
@@ -34,21 +34,47 @@ class PageSectionSerializer(serializers.ModelSerializer):
 class PageSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     updated_by = serializers.PrimaryKeyRelatedField(read_only=True)
-    # Only include active sections and order by 'order'
+
     sections = serializers.SerializerMethodField()
+    children = serializers.SerializerMethodField()
+    parent_title = serializers.CharField(source="parent.title", read_only=True)
 
     class Meta:
         model = Page
         fields = [
-            'id', 'slug', 'content', 'created_at', 'updated_at',
-            'name', 'title', 'is_active', 'created_by', 'updated_by',
-            'sections'
+            "id",
+            "name",
+            "title",
+            "slug",
+            "content",
+            "is_active",
+            "order",
+            "parent",
+            "parent_title",
+            "sections",
+            "children",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
         ]
-        read_only_fields = ['slug', 'created_at', 'updated_at', 'created_by', 'updated_by']
+        read_only_fields = [
+            "slug",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+        ]
 
     def get_sections(self, obj):
-        page_sections = PageSection.objects.filter(page=obj, is_active=True).order_by('order')
+        page_sections = PageSection.objects.filter(
+            page=obj, is_active=True
+        ).order_by("order")
         return PageSectionSerializer(page_sections, many=True).data
+
+    def get_children(self, obj):
+        children = obj.children.filter(is_active=True).order_by("order")
+        return PageSerializer(children, many=True).data
 
 
 # ==========================
@@ -118,16 +144,16 @@ class FeatureSerializer(serializers.ModelSerializer):
 # ==========================
 # NAVIGATION SERIALIZER
 # ==========================
-class NavigationItemSerializer(serializers.ModelSerializer):
-    sub_nav = serializers.SerializerMethodField(read_only=True)
+class NavigationSerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
 
     class Meta:
-        model = NavigationItem
-        fields = ['id', 'title', 'slug', 'url', 'parent_id', 'order', 'is_active', 'sub_nav']
+        model = Page
+        fields = ["id", "title", "slug", "children", "order"]
 
-    def get_sub_nav(self, obj):
-        children_qs = obj.children.filter(is_active=True).order_by('order')
-        return NavigationItemSerializer(children_qs, many=True).data
+    def get_children(self, obj):
+        children = obj.children.filter(is_active=True).order_by("order")
+        return NavigationSerializer(children, many=True).data
 
 
 # ==========================

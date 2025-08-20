@@ -11,14 +11,34 @@ User = get_user_model()
 # -------------------------
 # Page Model
 # -------------------------
+
 class Page(BaseModel):
     name = models.CharField(max_length=255, default="name")
     title = models.CharField(max_length=255, unique=True)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, blank=True)
     content = models.TextField(blank=True, null=True)
-    is_active = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
 
-    sections = models.ManyToManyField("Section", through="PageSection", related_name="pages", blank=True)
+    # navigation fields
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        related_name="children",
+        on_delete=models.CASCADE
+    )
+    order = models.PositiveIntegerField(default=0)
+
+    # sections through PageSection
+    sections = models.ManyToManyField(
+        "Section",
+        through="PageSection",
+        related_name="pages",
+        blank=True
+    )
+
+    class Meta:
+        ordering = ["order", "title"]
 
     def __str__(self):
         return f"{self.id} - {self.title}"
@@ -33,6 +53,28 @@ class Page(BaseModel):
                 count += 1
             self.slug = slug
         super().save(*args, **kwargs)
+# class Page(BaseModel):
+#     name = models.CharField(max_length=255, default="name")
+#     title = models.CharField(max_length=255, unique=True)
+#     slug = models.SlugField(unique=True)
+#     content = models.TextField(blank=True, null=True)
+#     is_active = models.BooleanField(default=False)
+
+#     sections = models.ManyToManyField("Section", through="PageSection", related_name="pages", blank=True)
+
+#     def __str__(self):
+#         return f"{self.id} - {self.title}"
+
+#     def save(self, *args, **kwargs):
+#         if not self.slug:
+#             base_slug = slugify(self.title or self.name)
+#             slug = base_slug
+#             count = 1
+#             while Page.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+#                 slug = f"{base_slug}-{count}"
+#                 count += 1
+#             self.slug = slug
+#         super().save(*args, **kwargs)
 
 
 class Section(BaseModel):
@@ -49,9 +91,21 @@ class Section(BaseModel):
 
     title = models.CharField(max_length=255, default="section", unique=True)
     is_active = models.BooleanField(default=True)
+    slug = models.SlugField(blank=True,unique=True)
 
     def __str__(self):
         return f"{self.id} - {self.title}"
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            count = 1
+            while Section.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{count}"
+                count += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
 
 
 class SectionItem(BaseModel):
@@ -168,43 +222,6 @@ class Banner(BaseModel):
     def __str__(self):
         return f"{self.id} - {self.title}"
 
-
-# -------------------------
-# NavigationItem Model
-# -------------------------
-class NavigationItem(BaseModel):
-    title = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(max_length=120, unique=True, blank=True)
-    url = models.URLField(blank=True)
-    parent_id = models.ForeignKey(
-        "self",
-        to_field="id",
-        db_column="parent_id",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="children",
-        db_constraint=True,
-    )
-    order = models.PositiveIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ["order"]
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base_slug = slugify(self.title)
-            slug = base_slug
-            counter = 1
-            while NavigationItem.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
-            self.slug = slug
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.id} - {self.title}"
 
 
 # -------------------------
