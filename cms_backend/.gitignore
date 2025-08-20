@@ -1,0 +1,13 @@
+/venv
+
+# Ignore all migration files
+# Ignore all migration files, but keep __init__.py
+**/migrations/**/*.py
+**/migrations/**/*.pyc
+!**/migrations/__init__.py
+
+# Ignore Django settings
+**/settings.py
+
+__pycache__/
+*.pyc
