@@ -173,7 +173,7 @@ class ContactInfoAdmin(admin.ModelAdmin):
 
 # -------------------------
 # PageSection Admin
-# -------------------------
+# ------------------------
 @admin.register(PageSection)
 class PageSectionAdmin(admin.ModelAdmin):
     list_display = ("id", "page", "section", "order", "is_active", "created_at", "updated_at")
