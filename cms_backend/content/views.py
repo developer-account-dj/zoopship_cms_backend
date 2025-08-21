@@ -140,7 +140,8 @@ class PageViewSet(BaseViewSet):
 
     def get_queryset(self):
         if self.action == "list":
-            return Page.objects.filter(is_active=True).order_by("-created_at")
+            # ✅ only fetch root-level pages
+            return Page.objects.filter(parent__isnull=True, is_active=True).order_by("order")
         return super().get_queryset()
 
     # Custom endpoint for navigation
