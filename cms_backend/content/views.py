@@ -251,6 +251,7 @@ class FeatureViewSet(BaseViewSet):
 class SectionViewSet(BaseViewSet):
     queryset = Section.objects.all()
     serializer_class = SectionSerializer
+    lookup_field = "slug"
 
     def get_queryset(self):
         if self.action == "list":
@@ -266,8 +267,8 @@ class SectionViewSet(BaseViewSet):
             "data": serializer.data
         })
 
-    def retrieve(self, request, pk=None):
-        section = get_object_or_404(Section, slug=pk)
+    def retrieve(self, request, slug=None):
+        section = get_object_or_404(Section, slug=slug)
         serializer = self.get_serializer(section)
         return Response({
             "success": True,
