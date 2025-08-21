@@ -257,11 +257,24 @@ class SectionViewSet(BaseViewSet):
             return Section.objects.filter(is_active=True).order_by("-created_at")
         return super().get_queryset()
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            "success": True,
+            "message": "Sections fetched successfully",
+            "data": serializer.data
+        })
+
     def retrieve(self, request, pk=None):
-        # Override to allow slug-based lookup
         section = get_object_or_404(Section, slug=pk)
         serializer = self.get_serializer(section)
-        return Response(serializer.data)
+        return Response({
+            "success": True,
+            "message": "Section retrieved successfully",
+            "data": serializer.data
+        })
+
 
 # ==========================
 # PAGE SECTION VIEWSET

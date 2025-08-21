@@ -14,22 +14,6 @@ User = get_user_model()
 # ==========================
 # PAGE SERIALIZER
 # ==========================
-class PageSectionSerializer(serializers.ModelSerializer):
-    section_title = serializers.CharField(source="section.title", read_only=True)
-    section_type = serializers.CharField(source="section.type", read_only=True)
-    # Optional: include section items if you want
-    section_items = serializers.SerializerMethodField()
-
-    class Meta:
-        model = PageSection
-        fields = ["id", "section", "section_title", "section_type", "order", "is_active", "section_items"]
-
-    def get_section_items(self, obj):
-        # Only include items if section is active
-        if obj.section.is_active:
-            return [{"id": item.id, "object_id": item.object_id} for item in obj.section.items.all()]
-        return []
-
 
 class PageSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -175,6 +159,21 @@ from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from .models import Section, SectionItem
 
+# ==========================
+# SECTION SERIALIZER
+# ==========================
+from .models import Section, SectionItem
+from django.contrib.contenttypes.models import ContentType
+from rest_framework import serializers
+
+# import all related serializers for full data
+from .serializers import (
+    FAQSerializer, BannerSerializer, BlogPostSerializer,
+    ContactInfoSerializer, HowItWorksSerializer, ImpressionSerializer,
+    FeatureSerializer
+)
+
+
 class SectionItemSerializer(serializers.ModelSerializer):
     content_type = serializers.CharField()  # accept simple type like "faq" or "banner"
     content_object = serializers.SerializerMethodField(read_only=True)
@@ -211,9 +210,28 @@ class SectionItemSerializer(serializers.ModelSerializer):
 
     def get_content_object(self, obj):
         content_obj = obj.content_object
-        if content_obj and getattr(content_obj, 'is_active', True):
-            return str(content_obj)
-        return None
+        if not content_obj or not getattr(content_obj, 'is_active', True):
+            return None
+
+        # Map model name → serializer
+        serializer_map = {
+            "faq": FAQSerializer,
+            "banner": BannerSerializer,
+            "blogpost": BlogPostSerializer,
+            "contactinfo": ContactInfoSerializer,
+            "howitworks": HowItWorksSerializer,
+            "impression": ImpressionSerializer,
+            "feature": FeatureSerializer,
+        }
+
+        model_name = obj.content_type.model  # e.g. "banner"
+        serializer_class = serializer_map.get(model_name)
+
+        if serializer_class:
+            return serializer_class(content_obj, context=self.context).data
+
+        # fallback
+        return {"id": content_obj.id, "detail": str(content_obj)}
 
 
 class SectionSerializer(serializers.ModelSerializer):
@@ -229,8 +247,6 @@ class SectionSerializer(serializers.ModelSerializer):
 
         for item_data in items_data:
             ct = item_data['content_type']
-            simple_type = item_data['simple_type']
-
             if ct.model == "page":
                 SectionItem.objects.create(
                     section=section,
@@ -259,8 +275,6 @@ class SectionSerializer(serializers.ModelSerializer):
             instance.items.all().delete()
             for item_data in items_data:
                 ct = item_data['content_type']
-                simple_type = item_data['simple_type']
-
                 if ct.model == "page":
                     SectionItem.objects.create(
                         section=instance,
@@ -284,12 +298,9 @@ class SectionSerializer(serializers.ModelSerializer):
         items = rep.get('items', [])
         for idx, item in enumerate(items):
             item_obj = instance.items.all()[idx]
-            # Map ContentType back to simple type
-            model_name = item_obj.content_type.model
-            item['content_type'] = model_name  # simple type like "faq", "banner"
+            # Simplify content_type to model name
+            item['content_type'] = item_obj.content_type.model
         return rep
-    
-
 from .models import PageSection, Page, Section
 
 class PageSectionSerializer(serializers.ModelSerializer):
