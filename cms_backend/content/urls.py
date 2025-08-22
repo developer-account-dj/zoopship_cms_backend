@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     PageViewSet, FAQViewSet, BlogPostViewSet, BannerViewSet,
     ContactInfoViewSet, HowItWorksViewSet, FeatureViewSet, ImpressionViewSet,
-    SectionViewSet,PageSectionViewSet
+    SectionViewSet,PageSectionViewSet,SliderBannerViewSet
 )
 
 router = DefaultRouter()
@@ -17,7 +17,9 @@ router.register(r'impressions', ImpressionViewSet, basename='impression')  # ✅
 router.register(r'features', FeatureViewSet, basename='feature')
 router.register(r'sections', SectionViewSet, basename='section')  # ✅ added SectionViewSet
 router.register(r'page-sections', PageSectionViewSet, basename='pagesection')
+router.register(r"slider-banners", SliderBannerViewSet, basename="sliderbanner")
 
 urlpatterns = [
     path('', include(router.urls)),
+    
 ]

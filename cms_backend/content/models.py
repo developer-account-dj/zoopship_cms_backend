@@ -20,7 +20,7 @@ class Page(BaseModel):
     is_active = models.BooleanField(default=True)
 
     # navigation fields
-    parent = models.ForeignKey(
+    parent_id = models.ForeignKey(
         "self",
         null=True,
         blank=True,
@@ -212,15 +212,34 @@ class BlogPost(BaseModel):
 # -------------------------
 class Banner(BaseModel):
     title = models.CharField(max_length=255, unique=True)
-    heading = models.CharField(max_length=255, blank=True, null=True, default="zoopship")
+    slug = models.SlugField(max_length=255, unique=True, blank=True)  # auto-generated
+    heading = models.CharField(max_length=255)  # mandatory
     subheading = models.CharField(max_length=500, blank=True, null=True, default="zoopship")
-    image = models.ImageField(upload_to="banners/")
+    description = models.TextField(blank=True, null=True)  # optional
+    image = models.ImageField(upload_to="banners/")  # mandatory
     url = models.URLField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
     extra_fields = models.JSONField(blank=True, null=True, default=dict)
 
+    def save(self, *args, **kwargs):
+        # Generate slug automatically if not set
+        if not self.slug:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+
+            # Ensure uniqueness
+            while Banner.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            self.slug = slug
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.id} - {self.title}"
+
 
 
 
@@ -276,7 +295,7 @@ class Impression(BaseModel):
     )
 
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=255,unique=True)
     description = models.TextField()
     image = models.ImageField(upload_to="goal_vision_mission/", blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -293,7 +312,7 @@ class Impression(BaseModel):
 # Feature Model
 # -------------------------
 class Feature(BaseModel):
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=255,unique=True)
     description = models.TextField(blank=True, null=True)
     icon = models.ImageField(upload_to="features/icons/", blank=True, null=True)
     order = models.PositiveIntegerField(default=0)
@@ -304,3 +323,33 @@ class Feature(BaseModel):
 
     def __str__(self):
         return f"{self.id} - {self.title}"
+
+
+
+
+
+class SliderBanner(BaseModel):
+    title = models.CharField(max_length=255, unique=True)
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title)
+            unique_slug = base_slug
+            counter = 1
+            while SliderBanner.objects.filter(slug=unique_slug).exists():
+                unique_slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = unique_slug
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+
+class Slide(BaseModel):
+    slider = models.ForeignKey(SliderBanner, related_name="slides", on_delete=models.CASCADE)
+    heading = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    image = models.ImageField(upload_to="slider_banners/")

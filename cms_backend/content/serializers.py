@@ -5,7 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from .models import (
     Page, FAQ, BlogPost, Banner, HowItWorks,
     Impression, Feature, ContactInfo,
-    Section, PageSection
+    Section, PageSection,Slide,SliderBanner
 )
 
 User = get_user_model()
@@ -14,6 +14,51 @@ User = get_user_model()
 # ==========================
 # PAGE SERIALIZER
 # ==========================
+
+# class PageSerializer(serializers.ModelSerializer):
+#     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+#     updated_by = serializers.PrimaryKeyRelatedField(read_only=True)
+
+#     sections = serializers.SerializerMethodField()
+#     children = serializers.SerializerMethodField()
+#     parent_title = serializers.CharField(source="parent.title", read_only=True)
+
+#     class Meta:
+#         model = Page
+#         fields = [
+#             "id",
+#             "name",
+#             "title",
+#             "slug",
+#             "content",
+#             "is_active",
+#             "order",
+#             "parent",
+#             "parent_title",
+#             "sections",
+#             "children",
+#             "created_at",
+#             "updated_at",
+#             "created_by",
+#             "updated_by",
+#         ]
+#         read_only_fields = [
+#             "slug",
+#             "created_at",
+#             "updated_at",
+#             "created_by",
+#             "updated_by",
+#         ]
+
+#     def get_sections(self, obj):
+#         page_sections = PageSection.objects.filter(
+#             page=obj, is_active=True
+#         ).order_by("order")
+#         return PageSectionSerializer(page_sections, many=True).data
+
+#     def get_children(self, obj):
+#         children = obj.children.filter(is_active=True).order_by("order")
+#         return PageSerializer(children, many=True).data
 
 class PageSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -33,7 +78,7 @@ class PageSerializer(serializers.ModelSerializer):
             "content",
             "is_active",
             "order",
-            "parent",
+            "parent_id",
             "parent_title",
             "sections",
             "children",
@@ -51,13 +96,13 @@ class PageSerializer(serializers.ModelSerializer):
         ]
 
     def get_sections(self, obj):
-        page_sections = PageSection.objects.filter(
-            page=obj, is_active=True
-        ).order_by("order")
+        # ✅ return ALL sections (active + inactive)
+        page_sections = PageSection.objects.filter(page=obj).order_by("order")
         return PageSectionSerializer(page_sections, many=True).data
 
     def get_children(self, obj):
-        children = obj.children.filter(is_active=True).order_by("order")
+        # ✅ return ALL children (active + inactive)
+        children = obj.children.all().order_by("order")
         return PageSerializer(children, many=True).data
 
 
@@ -128,16 +173,19 @@ class FeatureSerializer(serializers.ModelSerializer):
 # ==========================
 # NAVIGATION SERIALIZER
 # ==========================
+
 class NavigationSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
 
     class Meta:
         model = Page
-        fields = ["id", "title", "slug", "children", "order"]
+        fields = ["id", "title", "slug", "children", "order", "created_at"]
 
     def get_children(self, obj):
-        children = obj.children.filter(is_active=True).order_by("order")
+        # Only include active children ordered by `order`
+        children = obj.children.filter(is_active=True).order_by("created_at")
         return NavigationSerializer(children, many=True).data
+    
 
 
 # ==========================
@@ -195,6 +243,7 @@ class SectionItemSerializer(serializers.ModelSerializer):
             'how_it_works': 'content.howitworks',
             'impression': 'content.impression',
             'feature': 'content.feature',
+            'sliderbanner': 'content.sliderbanner',
         }
 
         if content_type_str not in type_map:
@@ -222,6 +271,7 @@ class SectionItemSerializer(serializers.ModelSerializer):
             "howitworks": HowItWorksSerializer,
             "impression": ImpressionSerializer,
             "feature": FeatureSerializer,
+            "sliderbanner": SliderBannerSerializer,  # ✅ ADD THIS
         }
 
         model_name = obj.content_type.model  # e.g. "banner"
@@ -318,3 +368,47 @@ class PageSectionSerializer(serializers.ModelSerializer):
         if PageSection.objects.filter(page=page, section=section).exists():
             raise serializers.ValidationError("This page already has this section linked.")
         return attrs
+    
+
+
+
+
+class SlideSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(use_url=True)
+    class Meta:
+        model = Slide
+        fields = ["id", "heading", "description", "image"]
+
+
+class SliderBannerSerializer(serializers.ModelSerializer):
+    slides = SlideSerializer(many=True,required=False)
+
+    class Meta:
+        model = SliderBanner
+        fields = ["id", "title", "slug", "is_active", "slides"]
+
+    def create(self, validated_data):
+        slides_data = validated_data.pop("slides", [])
+        slider = SliderBanner.objects.create(**validated_data)
+        for slide_data in slides_data:
+            Slide.objects.create(slider=slider, **slide_data)
+        return slider
+
+    def update(self, instance, validated_data):
+        slides_data = validated_data.pop("slides", None)
+        instance.title = validated_data.get("title", instance.title)
+        instance.is_active = validated_data.get("is_active", instance.is_active)
+        instance.save()
+
+        if slides_data is not None:
+            for slide_data in slides_data:
+                if "id" in slide_data:
+                    # Update existing slide
+                    slide = Slide.objects.get(id=slide_data["id"], slider=instance)
+                    for attr, value in slide_data.items():
+                        setattr(slide, attr, value)
+                    slide.save()
+                else:
+                    # Create new slide
+                    Slide.objects.create(slider=instance, **slide_data)
+        return instance

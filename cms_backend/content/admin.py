@@ -8,11 +8,10 @@ from .models import (
 # -------------------------
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "slug", "parent", "order", "is_active", "created_at", "updated_at")
+    list_display = ("id", "title", "slug", "parent_id", "order", "is_active", "created_at", "updated_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("title", "content", "slug")
-    prepopulated_fields = {"slug": ("title",)}
-    ordering = ("parent__id", "order")  # parent-child ordering
+    prepopulated_fields = {"slug": ("title",)} # parent-child ordering
     actions = ["publish_pages", "unpublish_pages"]
 
     @admin.action(description="Publish selected pages")
@@ -180,3 +179,30 @@ class PageSectionAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "page")
     search_fields = ("page__title", "section__title")
     ordering = ("page", "order")
+
+
+
+from .models import SliderBanner, Slide
+
+
+class SlideInline(admin.TabularInline):  # or use StackedInline for bigger forms
+    model = Slide
+    extra = 1  # how many empty forms to display
+    fields = ("heading", "description", "image")
+    show_change_link = True
+
+
+@admin.register(SliderBanner)
+class SliderBannerAdmin(admin.ModelAdmin):
+    list_display = ("id","title", "slug", "is_active", "created_at", "updated_at")
+    prepopulated_fields = {"slug": ("title",)}
+    search_fields = ("title", "slug")
+    list_filter = ("is_active", "created_at")
+    inlines = [SlideInline]
+
+
+@admin.register(Slide)
+class SlideAdmin(admin.ModelAdmin):
+    list_display = ("id","heading", "slider", "created_at", "updated_at")
+    search_fields = ("heading", "description")
+    list_filter = ("slider", "created_at")
