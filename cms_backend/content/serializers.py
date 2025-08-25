@@ -250,18 +250,13 @@ class SectionSerializer(serializers.ModelSerializer):
     page_slug = serializers.SlugField(write_only=True, required=False)
     is_active = serializers.BooleanField(required=False, default=True)
 
-    # 👇 Add this
     pages = serializers.SerializerMethodField()
 
     class Meta:
         model = Section
-        fields = ["id", "title", "slug", "is_active", "items", "page_slug","pages"]
+        fields = ["id", "title", "slug", "is_active", "items", "page_slug", "pages"]
 
     def get_pages(self, obj):
-        """
-        Return all pages linked to this section
-        via PageSection relationship.
-        """
         page_sections = PageSection.objects.filter(section=obj, is_active=True).select_related("page")
         return [
             {
@@ -271,36 +266,40 @@ class SectionSerializer(serializers.ModelSerializer):
             }
             for ps in page_sections
         ]
+
     def create(self, validated_data):
         request = self.context.get("request")
 
-        # Take out items + page_slug manually
         raw_items = parse_items_from_request(request.data)
         items_data = validated_data.pop("items", [])
         page_slug = validated_data.pop("page_slug", None)
 
-        # 1. Pre-validate all items BEFORE creating section
+        # 1. Pre-validate items BEFORE creating section
         validated_items = []
         for idx, item_data in enumerate(raw_items or items_data):
             item_serializer = SectionItemSerializer(
                 data=item_data,
                 context={**self.context, "index": idx, "item_data": item_data},
             )
-            item_serializer.is_valid(raise_exception=True)  # will raise before saving
+            item_serializer.is_valid(raise_exception=True)
             validated_items.append(item_serializer)
 
-        # 2. Atomic block → rollback if any failure occurs
+        # 2. Atomic transaction
         with transaction.atomic():
-            # Create section
             section = Section.objects.create(**validated_data)
 
-            # Save all pre-validated items
+            # Save pre-validated items
             for item_serializer in validated_items:
                 item_serializer.save(section=section)
 
-            # Link to page if provided
+            # Handle page_slug safely
             if page_slug:
-                page = Page.objects.get(slug=page_slug)
+                try:
+                    page = Page.objects.get(slug=page_slug)
+                except Page.DoesNotExist:
+                    raise serializers.ValidationError(
+                        {"page_slug": f"Page with slug '{page_slug}' does not exist."}
+                    )
                 PageSection.objects.create(page=page, section=section, is_active=True)
 
         return section

@@ -597,7 +597,7 @@ class SliderBannerViewSet(BaseViewSet):
     
 
 # ✅ PageSectionViewSet (simple CRUD)
-class PageSectionViewSet(viewsets.ModelViewSet):
+class PageSectionViewSet(BaseViewSet):
     queryset = PageSection.objects.all().order_by("order")
     serializer_class = PageSectionSerializer
     lookup_field = "id"
