@@ -1,138 +1,110 @@
 from django.contrib import admin
 from .models import (
-    Page, FAQ, BlogPost, Banner, HowItWorks, Feature, Impression, Section, ContactInfo, PageSection
+    Page, Section, PageSection,
+    FAQ, BlogPost, Banner, SliderBanner, Slide,
+    Feature, HowItWorks, Impression, ContactInfo
 )
+
+# -------------------------
+# Common Admin Mixins
+# -------------------------
+class ActiveAdminMixin:
+    """Reusable mixin for active/inactive actions."""
+
+    @admin.action(description="Activate selected items")
+    def activate_items(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"{updated} item(s) successfully activated.")
+
+    @admin.action(description="Deactivate selected items")
+    def deactivate_items(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"{updated} item(s) successfully deactivated.")
+
 
 # -------------------------
 # Page Admin
 # -------------------------
 @admin.register(Page)
-class PageAdmin(admin.ModelAdmin):
+class PageAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "title", "slug", "parent_id", "order", "is_active", "created_at", "updated_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("title", "content", "slug")
-    prepopulated_fields = {"slug": ("title",)} # parent-child ordering
-    actions = ["publish_pages", "unpublish_pages"]
-
-    @admin.action(description="Publish selected pages")
-    def publish_pages(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f"{updated} page(s) successfully published.")
-
-    @admin.action(description="Unpublish selected pages")
-    def unpublish_pages(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, f"{updated} page(s) successfully unpublished.")
+    prepopulated_fields = {"slug": ("title",)}
+    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
 # Section Admin
 # -------------------------
 @admin.register(Section)
-class SectionAdmin(admin.ModelAdmin):
+class SectionAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "title", "is_active", "created_at", "updated_at")
     search_fields = ("title",)
     ordering = ("title",)
-    actions = ["activate_sections", "deactivate_sections"]
-
-    @admin.action(description="Activate selected sections")
-    def activate_sections(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f"{updated} section(s) successfully activated.")
-
-    @admin.action(description="Deactivate selected sections")
-    def deactivate_sections(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, f"{updated} section(s) successfully deactivated.")
+    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
 # FAQ Admin
 # -------------------------
 @admin.register(FAQ)
-class FAQAdmin(admin.ModelAdmin):
+class FAQAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "question", "is_active", "order", "created_at", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("question", "answer")
     ordering = ("order",)
-    actions = ["activate_faqs", "deactivate_faqs"]
-
-    @admin.action(description="Activate selected FAQs")
-    def activate_faqs(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f"{updated} FAQ(s) successfully activated.")
-
-    @admin.action(description="Deactivate selected FAQs")
-    def deactivate_faqs(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, f"{updated} FAQ(s) successfully deactivated.")
+    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
 # Banner Admin
 # -------------------------
 @admin.register(Banner)
-class BannerAdmin(admin.ModelAdmin):
+class BannerAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "title", "is_active", "created_at", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("title",)
-    actions = ["activate_banners", "deactivate_banners"]
-
-    @admin.action(description="Activate selected banners")
-    def activate_banners(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f"{updated} banner(s) successfully activated.")
-
-    @admin.action(description="Deactivate selected banners")
-    def deactivate_banners(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, f"{updated} banner(s) successfully deactivated.")
+    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
 # Blog Post Admin
 # -------------------------
 @admin.register(BlogPost)
-class BlogPostAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "author", "slug", "is_active", "created_at", "updated_at")
-    list_filter = ("is_active", "author")
+class BlogPostAdmin(admin.ModelAdmin, ActiveAdminMixin):
+    list_display = ("id", "title", "slug", "is_active", "created_at", "updated_at")
+    list_filter = ("is_active",)
     search_fields = ("title", "summary", "content")
     prepopulated_fields = {"slug": ("title",)}
-    actions = ["publish_posts", "unpublish_posts"]
-
-    @admin.action(description="Publish selected blog posts")
-    def publish_posts(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f"{updated} blog post(s) successfully published.")
-
-    @admin.action(description="Unpublish selected blog posts")
-    def unpublish_posts(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, f"{updated} blog post(s) successfully unpublished.")
+    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
 # Feature Admin
 # -------------------------
 @admin.register(Feature)
-class FeatureAdmin(admin.ModelAdmin):
+class FeatureAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "title", "order", "is_active", "created_at", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("title", "description")
     ordering = ("order",)
     readonly_fields = ("created_at", "updated_at")
+    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
-# HowItWorks Admin
+# How It Works Admin
 # -------------------------
 @admin.register(HowItWorks)
-class HowItWorksAdmin(admin.ModelAdmin):
+class HowItWorksAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "title", "subtitle", "is_active", "created_at", "updated_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("title", "subtitle", "description")
     ordering = ("-created_at",)
     readonly_fields = ("created_at", "updated_at")
+    actions = ["activate_items", "deactivate_items"]
+
     fieldsets = (
         ("Main Information", {"fields": ("title", "subtitle", "description", "background_image", "is_active")}),
         ("Steps Information", {"fields": ("steps",)}),
@@ -145,12 +117,13 @@ class HowItWorksAdmin(admin.ModelAdmin):
 # Impression Admin
 # -------------------------
 @admin.register(Impression)
-class ImpressionAdmin(admin.ModelAdmin):
+class ImpressionAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "type", "title", "is_active", "description", "created_at", "updated_at")
     search_fields = ("title", "description")
     list_filter = ("is_active", "created_at", "updated_at")
     ordering = ("-created_at",)
     readonly_fields = ("created_by", "updated_by", "created_at", "updated_at")
+    actions = ["activate_items", "deactivate_items"]
 
     def save_model(self, request, obj, form, change):
         if not obj.pk:
@@ -163,46 +136,48 @@ class ImpressionAdmin(admin.ModelAdmin):
 # ContactInfo Admin
 # -------------------------
 @admin.register(ContactInfo)
-class ContactInfoAdmin(admin.ModelAdmin):
+class ContactInfoAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("contact_type", "label", "value", "icon", "order", "is_active", "created_at")
     list_filter = ("contact_type", "is_active")
     search_fields = ("label", "value")
     ordering = ("contact_type", "order")
+    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
 # PageSection Admin
 # -------------------------
 @admin.register(PageSection)
-class PageSectionAdmin(admin.ModelAdmin):
+class PageSectionAdmin(admin.ModelAdmin, ActiveAdminMixin):
     list_display = ("id", "page", "section", "order", "is_active", "created_at", "updated_at")
     list_filter = ("is_active", "page")
     search_fields = ("page__title", "section__title")
     ordering = ("page", "order")
+    actions = ["activate_items", "deactivate_items"]
 
 
-
-from .models import SliderBanner, Slide
-
-
-class SlideInline(admin.TabularInline):  # or use StackedInline for bigger forms
+# -------------------------
+# Slider Banner & Slide Admin
+# -------------------------
+class SlideInline(admin.TabularInline):
     model = Slide
-    extra = 1  # how many empty forms to display
+    extra = 1
     fields = ("heading", "description", "image")
     show_change_link = True
 
 
 @admin.register(SliderBanner)
-class SliderBannerAdmin(admin.ModelAdmin):
-    list_display = ("id","title", "slug", "is_active", "created_at", "updated_at")
+class SliderBannerAdmin(admin.ModelAdmin, ActiveAdminMixin):
+    list_display = ("id", "title", "slug", "is_active", "created_at", "updated_at")
     prepopulated_fields = {"slug": ("title",)}
     search_fields = ("title", "slug")
     list_filter = ("is_active", "created_at")
     inlines = [SlideInline]
+    actions = ["activate_items", "deactivate_items"]
 
 
 @admin.register(Slide)
 class SlideAdmin(admin.ModelAdmin):
-    list_display = ("id","heading", "slider", "created_at", "updated_at")
+    list_display = ("id", "heading", "slider", "created_at", "updated_at")
     search_fields = ("heading", "description")
     list_filter = ("slider", "created_at")

@@ -1,98 +1,27 @@
-from rest_framework.response import Response
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.exceptions import NotFound
+from django.shortcuts import get_object_or_404
+from django.db.models import Q
+from django.contrib.contenttypes.models import ContentType
+
 from .models import (
-    Page, FAQ, BlogPost, Banner,
-    ContactInfo, HowItWorks, Impression, Feature, Section, PageSection,Slide,SliderBanner
+    Page, FAQ, BlogPost, Banner, ContactInfo, HowItWorks,
+    Impression, Feature, PageSection, Slide, SliderBanner,
+    Section, SectionItem
 )
 from .serializers import (
     PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
     NavigationSerializer, ContactInfoSerializer, HowItWorksSerializer,
-    ImpressionSerializer, FeatureSerializer, SectionSerializer, PageSectionSerializer,
-    SliderBannerSerializer,SlideSerializer
+    ImpressionSerializer, FeatureSerializer,
+    SliderBannerSerializer, SlideSerializer, SectionSerializer,PageSectionSerializer
 )
 from core.utils.response_helpers import success_response, error_response
-from django.shortcuts import get_object_or_404
-from rest_framework.exceptions import NotFound
-from rest_framework.decorators import action
-from rest_framework import status
-from django.db.models import Q
-
 # ==========================
 # BASEVIEWSET VIEWSET
 # ==========================
-# class BaseViewSet(viewsets.ModelViewSet):
-#     """
-#     Base viewset to handle create/update/destroy with success/error responses.
-#     Other viewsets inherit from this.
-#     """
-
-#     def perform_create(self, serializer):
-#         serializer.save(created_by=self.request.user, updated_by=self.request.user)
-
-#     def perform_update(self, serializer):
-#         serializer.save(updated_by=self.request.user)
-
-#     # CREATE (POST)
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         if serializer.is_valid():
-#             self.perform_create(serializer)
-#             return success_response(
-#                 data=serializer.data,
-#                 message=f"{self.basename.title()} created successfully",
-#                 http_status=status.HTTP_201_CREATED
-#             )
-#         return error_response(
-#             message="Validation failed",
-#             data=serializer.errors,
-#             http_status=status.HTTP_400_BAD_REQUEST
-#         )
-
-#     # UPDATE (PUT)
-#     def update(self, request, *args, **kwargs):
-#         partial = kwargs.pop("partial", False)
-#         instance = self.get_object()
-#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-#         if serializer.is_valid():
-#             self.perform_update(serializer)
-#             return success_response(
-#                 data=serializer.data,
-#                 message=f"{self.basename.title()} updated successfully"
-#             )
-#         return error_response(
-#             message="Validation failed",
-#             data=serializer.errors,
-#             http_status=status.HTTP_400_BAD_REQUEST
-#         )
-
-#     # PARTIAL UPDATE (PATCH)
-#     def partial_update(self, request, *args, **kwargs):
-#         kwargs["partial"] = True
-#         return self.update(request, *args, **kwargs)
-
-#     # LIST (GET)
-#     def list(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(self.filter_queryset(self.get_queryset()), many=True)
-#         return success_response(data=serializer.data, message=f"{self.basename.title()} list fetched")
-
-#     # RETRIEVE (GET by ID/slug)
-#     def retrieve(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(self.get_object())
-#         return success_response(data=serializer.data, message=f"{self.basename.title()} fetched")
-
-#     # DESTROY (DELETE)
-#     def destroy(self, request, *args, **kwargs):
-#         self.get_object().delete()
-#         return success_response(message=f"{self.basename.title()} deleted successfully")
-
-#     # Common permission logic
-#     def get_permissions(self):
-#         if self.action in ["list", "retrieve"]:
-#             # ✅ list and retrive allow
-#             return [AllowAny()]
-#         return [IsAuthenticated()]
-
 
 class BaseViewSet(viewsets.ModelViewSet):
     """
@@ -399,15 +328,38 @@ class FeatureViewSet(BaseViewSet):
 # ==========================
 # SECTION VIEWSET
 # ==========================
-class SectionViewSet(BaseViewSet):
+class SectionViewSet(viewsets.ModelViewSet):
     queryset = Section.objects.all()
     serializer_class = SectionSerializer
+    permission_classes = [AllowAny]
     lookup_field = "slug"
 
+    def get_object(self):
+        """
+        Retrieve Section by slug AND optional ?page=<slug>
+        """
+        slug = self.kwargs.get("slug")
+        page_slug = self.request.query_params.get("page")
+    
+        qs = Section.objects.filter(slug=slug, is_active=True)
+    
+        if page_slug:
+            qs = qs.filter(section_pages__page__slug=page_slug, section_pages__is_active=True)
+    
+        return get_object_or_404(qs)
+    
     def get_queryset(self):
-        if self.action == "list":
-            return Section.objects.filter(is_active=True).order_by("-created_at")
-        return super().get_queryset()
+        qs = Section.objects.filter(is_active=True)
+        page_slug = self.request.query_params.get("page")
+        if page_slug:
+            qs = qs.filter(section_pages__page__slug=page_slug, section_pages__is_active=True)
+        return qs.order_by("-created_at")
+
+
+
+
+
+    
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -418,8 +370,8 @@ class SectionViewSet(BaseViewSet):
             "data": serializer.data
         })
 
-    def retrieve(self, request, slug=None):
-        section = get_object_or_404(Section, slug=slug)
+    def retrieve(self, request, *args, **kwargs):
+        section = self.get_object()
         serializer = self.get_serializer(section)
         return Response({
             "success": True,
@@ -427,22 +379,23 @@ class SectionViewSet(BaseViewSet):
             "data": serializer.data
         })
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(
+                "Validation failed",
+                serializer.errors,
+                status.HTTP_400_BAD_REQUEST
+            )
+        section = serializer.save()
+        return success_response(
+            SectionSerializer(section, context={"request": request}).data,
+            "Section created with items and linked to page",
+            status.HTTP_201_CREATED,
+        )
 
-# ==========================
-# PAGE SECTION VIEWSET
-# ==========================
-class PageSectionViewSet(BaseViewSet):
-    queryset = PageSection.objects.all()
-    serializer_class = PageSectionSerializer
 
-    def get_queryset(self):
-        if self.action == "list":
-            return PageSection.objects.filter(is_active=True, section__is_active=True).order_by("-created_at")
-        return super().get_queryset()
-    
-
-
-
+   
 
 class SliderBannerViewSet(BaseViewSet):
     queryset = SliderBanner.objects.all().order_by("created_at")
@@ -643,3 +596,8 @@ class SliderBannerViewSet(BaseViewSet):
 
     
 
+# ✅ PageSectionViewSet (simple CRUD)
+class PageSectionViewSet(viewsets.ModelViewSet):
+    queryset = PageSection.objects.all().order_by("order")
+    serializer_class = PageSectionSerializer
+    lookup_field = "id"
