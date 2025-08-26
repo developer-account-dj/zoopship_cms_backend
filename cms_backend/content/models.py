@@ -61,9 +61,10 @@ class Page(BaseModel):
 # -------------------------
 
 class Section(BaseModel):
-    title = models.CharField(max_length=255, default="section",unique=True)
+    title = models.CharField(max_length=255, default="section",)
     slug = models.SlugField(blank=True, unique=True)
     is_active = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0, db_index=True)
 
     def __str__(self):
         return f"{self.id} - {self.title}"
@@ -87,9 +88,9 @@ from django.contrib.contenttypes.models import ContentType
 # -------------------------
 class SectionItem(BaseModel):
     section = models.ForeignKey("Section", related_name="items", on_delete=models.CASCADE)
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.CharField(max_length=50)
-    content_object = GenericForeignKey("content_type", "object_id")
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)# Which model (FAQ, BlogPost...)
+    object_id = models.CharField(max_length=50)# ID of the object (e.g., FAQ with ID 7)
+    content_object = GenericForeignKey("content_type", "object_id")# The actual object
 
     class Meta:
         unique_together = ("section", "content_type", "object_id")
@@ -180,7 +181,7 @@ class BlogPost(BaseModel):
 
 
 class Banner(BaseModel):
-    title = models.CharField(max_length=255, unique=True)
+    title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
     heading = models.CharField(max_length=255)
     subheading = models.CharField(max_length=500, blank=True, null=True, default="zoopship")
@@ -274,7 +275,7 @@ class Feature(BaseModel):
 
 
 class SliderBanner(BaseModel):
-    title = models.CharField(max_length=255, unique=True)
+    title = models.CharField(max_length=255,)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
     is_active = models.BooleanField(default=True)
 

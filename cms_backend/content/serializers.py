@@ -163,27 +163,68 @@ class SliderBannerSerializer(serializers.ModelSerializer):
 # ==========================
 # HELPER: Parse flat form-data
 # ==========================
+# 
+
+import re
+from collections import defaultdict
+
 def parse_items_from_request(request_data):
     """
-    Convert flat POST keys like items[0][title] -> [{'title': ...}, {...}]
-    Works for multipart/form-data with file fields too.
+    Parse nested keys like:
+    items[0][slides][1][heading] -> 
+    [{'slides': [{'heading': ...}, {...}]}]
     """
-    items_dict = {}
+    items_dict = defaultdict(dict)
 
     for key, value in request_data.items():
         if not key.startswith("items["):
             continue
-        # e.g. "items[0][title]" -> idx=0, field="title"
-        inside = key[len("items["):]
-        idx_str, field = inside.split("]", 1)
-        idx = int(idx_str)
-        field = field.strip("[]")
 
-        if idx not in items_dict:
-            items_dict[idx] = {}
-        items_dict[idx][field] = value
+        # Split into parts: items[0][slides][1][heading] -> ['0', 'slides', '1', 'heading']
+        parts = re.findall(r"\[(.*?)\]", key)
+        if not parts:
+            continue
 
+        idx = int(parts[0])  # top-level item index
+        current = items_dict[idx]
+
+        cursor = current
+        for i, p in enumerate(parts[1:]):
+            is_last = (i == len(parts[1:]) - 1)
+
+            # If it's an index → list
+            if p.isdigit():
+                p = int(p)
+                if not isinstance(cursor, list):
+                    # replace cursor with list if needed
+                    new_list = []
+                    if cursor == current:  # top level
+                        # replace dict with list directly
+                        items_dict[idx] = new_list
+                        cursor = items_dict[idx]
+                    else:
+                        # find key in parent dict that points to cursor
+                        for k, v in current.items():
+                            if v is cursor:
+                                current[k] = new_list
+                                break
+                        cursor = new_list
+
+                while len(cursor) <= p:
+                    cursor.append({})
+                cursor = cursor[p]
+
+            else:  # normal key → dict
+                if is_last:
+                    cursor[p] = value
+                else:
+                    if p not in cursor:
+                        cursor[p] = {}
+                    cursor = cursor[p]
+
+    # Convert dict to sorted list
     return [items_dict[k] for k in sorted(items_dict.keys())]
+
 
 
 CONTENT_SERIALIZER_MAP = {
@@ -197,23 +238,34 @@ CONTENT_SERIALIZER_MAP = {
     "sliderbanner": SliderBannerSerializer,
 }
 
+
+URL_TO_CONTENT_TYPE = {
+    "slider-banner": "sliderbanner",
+    "blog-post": "blogpost",
+    "faq": "faq",
+    "banner": "banner",
+    "how-it-works": "howitworks",
+    "impression": "impression",
+    "feature": "feature",
+    "contact-info": "contactinfo",
+}
+
 # ==========================
 # SECTION ITEM SERIALIZER
 # ==========================
 
-class SectionItemSerializer(serializers.ModelSerializer):
-    content_type = serializers.CharField(write_only=True)
-    object_id = serializers.CharField(read_only=True)
 
-    # Add nested representation of the related content object
+
+class SectionItemSerializer(serializers.ModelSerializer):
+    object_id = serializers.CharField(read_only=True)
     content_object = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = SectionItem
-        fields = ["id", "content_type", "object_id", "content_object"]
+        fields = ["id", "object_id", "content_object"]
 
     def get_content_object(self, instance):
-        model_name = instance.content_type.model  # e.g. "faq", "banner"
+        model_name = instance.content_type.model
         serializer_class = CONTENT_SERIALIZER_MAP.get(model_name)
         if not serializer_class:
             return None
@@ -221,13 +273,12 @@ class SectionItemSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         section = validated_data["section"]
-        content_type_name = validated_data.pop("content_type").lower()
+        content_type_name = self.context.get("content_type")  # ✅ from URL
 
         model_serializer_class = CONTENT_SERIALIZER_MAP.get(content_type_name)
         if not model_serializer_class:
             raise serializers.ValidationError(f"Invalid content_type: {content_type_name}")
 
-        # Item data already pre-parsed from request
         request = self.context.get("request")
         item_data = self.context.get("item_data", {})
 
@@ -241,40 +292,74 @@ class SectionItemSerializer(serializers.ModelSerializer):
             object_id=obj.id
         )
 
+
 from django.db import transaction
 # ==========================
 # SECTION SERIALIZER
 # ==========================
 class SectionSerializer(serializers.ModelSerializer):
     items = SectionItemSerializer(many=True, read_only=True)
-    page_slug = serializers.SlugField(write_only=True, required=False)
+    page_id = serializers.CharField(write_only=True, required=True)  # ✅ required
+    page_slug = serializers.SlugField(write_only=True, required=False)   # ✅ optional
     is_active = serializers.BooleanField(required=False, default=True)
 
     pages = serializers.SerializerMethodField()
 
     class Meta:
         model = Section
-        fields = ["id", "title", "slug", "is_active", "items", "page_slug", "pages"]
+        fields = [
+            "id",
+            "title",
+            "slug",
+            "order",
+            "is_active",
+            "items",
+            "page_id",
+            "page_slug",
+            "pages",
+        ]
 
     def get_pages(self, obj):
-        page_sections = PageSection.objects.filter(section=obj, is_active=True).select_related("page")
+        page_sections = PageSection.objects.filter(
+            section=obj, is_active=True
+        ).select_related("page")
         return [
-            {
-                "id": ps.page.id,
-                "title": ps.page.title,
-                "slug": ps.page.slug,
-            }
+            {"id": ps.page.id, "title": ps.page.title, "slug": ps.page.slug}
             for ps in page_sections
         ]
+
+    # ✅ Validate page_id (mandatory) + optional slug
+    def validate(self, attrs):
+        page_id = attrs.get("page_id")
+        page_slug = attrs.get("page_slug")
+
+        if not page_id:
+            raise serializers.ValidationError({"page_id": "This field is required."})
+
+        try:
+            page = Page.objects.get(id=page_id)
+        except Page.DoesNotExist:
+            raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist."})
+
+        if page_slug and page.slug != page_slug:
+            raise serializers.ValidationError(
+                {"page_slug": f"Slug '{page_slug}' does not match page id {page_id}."}
+            )
+
+        # ✅ stash resolved page for later use in create()
+        attrs["page_obj"] = page
+        return attrs
 
     def create(self, validated_data):
         request = self.context.get("request")
 
         raw_items = parse_items_from_request(request.data)
         items_data = validated_data.pop("items", [])
-        page_slug = validated_data.pop("page_slug", None)
+        page = validated_data.pop("page_obj")   # ✅ from validate()
+        validated_data.pop("page_id", None)
+        validated_data.pop("page_slug", None)
 
-        # 1. Pre-validate items BEFORE creating section
+        # --- Pre-validate items
         validated_items = []
         for idx, item_data in enumerate(raw_items or items_data):
             item_serializer = SectionItemSerializer(
@@ -284,29 +369,35 @@ class SectionSerializer(serializers.ModelSerializer):
             item_serializer.is_valid(raise_exception=True)
             validated_items.append(item_serializer)
 
-        # 2. Atomic transaction
+        # --- Atomic transaction
         with transaction.atomic():
             section = Section.objects.create(**validated_data)
 
-            # Save pre-validated items
             for item_serializer in validated_items:
                 item_serializer.save(section=section)
 
-            # Handle page_slug safely
-            if page_slug:
-                try:
-                    page = Page.objects.get(slug=page_slug)
-                except Page.DoesNotExist:
-                    raise serializers.ValidationError(
-                        {"page_slug": f"Page with slug '{page_slug}' does not exist."}
-                    )
-                PageSection.objects.create(page=page, section=section, is_active=True)
+            PageSection.objects.create(page=page, section=section, is_active=True)
 
         return section
-
 # ==========================
 # PAGESECTION SERIALIZER
 # ==========================
+# class PageSectionSerializer(serializers.ModelSerializer):
+#     page_title = serializers.CharField(source="page.title", read_only=True)
+#     section_title = serializers.CharField(source="section.title", read_only=True)
+
+#     class Meta:
+#         model = PageSection
+#         fields = ["id", "page", "page_title", "section", "section_title", "order", "is_active"]
+
+#     def validate(self, attrs):
+#         page = attrs.get('page')
+#         section = attrs.get('section')
+#         if PageSection.objects.filter(page=page, section=section).exists():
+#             raise serializers.ValidationError("This page already has this section linked.")
+#         return attrs
+
+
 class PageSectionSerializer(serializers.ModelSerializer):
     page_title = serializers.CharField(source="page.title", read_only=True)
     section_title = serializers.CharField(source="section.title", read_only=True)
@@ -316,8 +407,16 @@ class PageSectionSerializer(serializers.ModelSerializer):
         fields = ["id", "page", "page_title", "section", "section_title", "order", "is_active"]
 
     def validate(self, attrs):
-        page = attrs.get('page')
-        section = attrs.get('section')
-        if PageSection.objects.filter(page=page, section=section).exists():
-            raise serializers.ValidationError("This page already has this section linked.")
+        page = attrs.get("page")
+        section = attrs.get("section")
+
+        # ✅ enforce uniqueness: (page_id, section_id)
+        qs = PageSection.objects.filter(page=page, section=section)
+        if self.instance:
+            # If updating, exclude current record
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {"non_field_errors": [f"Page '{page.id}' already has section '{section.id}' linked."]}
+            )
         return attrs

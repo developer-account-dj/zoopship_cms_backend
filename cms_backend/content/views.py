@@ -16,7 +16,7 @@ from .serializers import (
     PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
     NavigationSerializer, ContactInfoSerializer, HowItWorksSerializer,
     ImpressionSerializer, FeatureSerializer,
-    SliderBannerSerializer, SlideSerializer, SectionSerializer,PageSectionSerializer
+    SliderBannerSerializer, SlideSerializer, SectionSerializer,PageSectionSerializer,URL_TO_CONTENT_TYPE
 )
 from core.utils.response_helpers import success_response, error_response
 # ==========================
@@ -334,6 +334,14 @@ class SectionViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     lookup_field = "slug"
 
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        url_ct = self.kwargs.get("content_type")  # e.g., "slider-banner"
+        internal_ct = URL_TO_CONTENT_TYPE.get(url_ct, url_ct)  # fallback to raw
+        context["content_type"] = internal_ct
+        return context
+
     def get_object(self):
         """
         Retrieve Section by slug AND optional ?page=<slug>
@@ -348,16 +356,37 @@ class SectionViewSet(viewsets.ModelViewSet):
     
         return get_object_or_404(qs)
     
+    # def get_queryset(self):
+    #     qs = Section.objects.filter(is_active=True)
+    #     page_slug = self.request.query_params.get("page")
+    #     if page_slug:
+    #         qs = qs.filter(section_pages__page__slug=page_slug, section_pages__is_active=True)
+    #     return qs.order_by("-created_at")
+    
     def get_queryset(self):
         qs = Section.objects.filter(is_active=True)
-        page_slug = self.request.query_params.get("page")
+    
+        # content_type comes from URL
+        url_content_type = self.kwargs.get("content_type")
+        internal_ct = URL_TO_CONTENT_TYPE.get(url_content_type, url_content_type)
+    
+        if internal_ct:
+            qs = qs.filter(
+                items__content_type=ContentType.objects.get(
+                    model=internal_ct
+                )
+            ).distinct()
+    
+        # page_slug comes from URL param or ?page= query
+        page_slug = self.kwargs.get("page_slug") or self.request.query_params.get("page")
         if page_slug:
-            qs = qs.filter(section_pages__page__slug=page_slug, section_pages__is_active=True)
+            qs = qs.filter(
+                section_pages__page__slug=page_slug,
+                section_pages__is_active=True
+            )
+    
         return qs.order_by("-created_at")
-
-
-
-
+    
 
     
 
