@@ -9,14 +9,13 @@ from django.contrib.contenttypes.models import ContentType
 
 from .models import (
     Page, FAQ, BlogPost, Banner, ContactInfo, HowItWorks,
-    Impression, Feature, PageSection, Slide, SliderBanner,
-    Section, SectionItem
+    Impression, Feature,  Slide, SliderBanner, 
 )
 from .serializers import (
     PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
     NavigationSerializer, ContactInfoSerializer, HowItWorksSerializer,
     ImpressionSerializer, FeatureSerializer,
-    SliderBannerSerializer, SlideSerializer, SectionSerializer,PageSectionSerializer,URL_TO_CONTENT_TYPE
+    SliderBannerSerializer, SlideSerializer, 
 )
 from core.utils.response_helpers import success_response, error_response
 # ==========================
@@ -325,107 +324,6 @@ class FeatureViewSet(BaseViewSet):
         return super().get_queryset()
 
 
-# ==========================
-# SECTION VIEWSET
-# ==========================
-class SectionViewSet(viewsets.ModelViewSet):
-    queryset = Section.objects.all()
-    serializer_class = SectionSerializer
-    permission_classes = [AllowAny]
-    lookup_field = "slug"
-
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        url_ct = self.kwargs.get("content_type")  # e.g., "slider-banner"
-        internal_ct = URL_TO_CONTENT_TYPE.get(url_ct, url_ct)  # fallback to raw
-        context["content_type"] = internal_ct
-        return context
-
-    def get_object(self):
-        """
-        Retrieve Section by slug AND optional ?page=<slug>
-        """
-        slug = self.kwargs.get("slug")
-        page_slug = self.request.query_params.get("page")
-    
-        qs = Section.objects.filter(slug=slug, is_active=True)
-    
-        if page_slug:
-            qs = qs.filter(section_pages__page__slug=page_slug, section_pages__is_active=True)
-    
-        return get_object_or_404(qs)
-    
-    # def get_queryset(self):
-    #     qs = Section.objects.filter(is_active=True)
-    #     page_slug = self.request.query_params.get("page")
-    #     if page_slug:
-    #         qs = qs.filter(section_pages__page__slug=page_slug, section_pages__is_active=True)
-    #     return qs.order_by("-created_at")
-    
-    def get_queryset(self):
-        qs = Section.objects.filter(is_active=True)
-    
-        # content_type comes from URL
-        url_content_type = self.kwargs.get("content_type")
-        internal_ct = URL_TO_CONTENT_TYPE.get(url_content_type, url_content_type)
-    
-        if internal_ct:
-            qs = qs.filter(
-                items__content_type=ContentType.objects.get(
-                    model=internal_ct
-                )
-            ).distinct()
-    
-        # page_slug comes from URL param or ?page= query
-        page_slug = self.kwargs.get("page_slug") or self.request.query_params.get("page")
-        if page_slug:
-            qs = qs.filter(
-                section_pages__page__slug=page_slug,
-                section_pages__is_active=True
-            )
-    
-        return qs.order_by("-created_at")
-    
-
-    
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            "success": True,
-            "message": "Sections fetched successfully",
-            "data": serializer.data
-        })
-
-    def retrieve(self, request, *args, **kwargs):
-        section = self.get_object()
-        serializer = self.get_serializer(section)
-        return Response({
-            "success": True,
-            "message": "Section retrieved successfully",
-            "data": serializer.data
-        })
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if not serializer.is_valid():
-            return error_response(
-                "Validation failed",
-                serializer.errors,
-                status.HTTP_400_BAD_REQUEST
-            )
-        section = serializer.save()
-        return success_response(
-            SectionSerializer(section, context={"request": request}).data,
-            "Section created with items and linked to page",
-            status.HTTP_201_CREATED,
-        )
-
-
-   
-
 class SliderBannerViewSet(BaseViewSet):
     queryset = SliderBanner.objects.all().order_by("created_at")
     serializer_class = SliderBannerSerializer
@@ -620,13 +518,3 @@ class SliderBannerViewSet(BaseViewSet):
 
     
     
-    
-    
-
-    
-
-# ✅ PageSectionViewSet (simple CRUD)
-class PageSectionViewSet(BaseViewSet):
-    queryset = PageSection.objects.all().order_by("order")
-    serializer_class = PageSectionSerializer
-    lookup_field = "id"

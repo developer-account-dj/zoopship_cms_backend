@@ -29,13 +29,6 @@ class Page(BaseModel):
     )
     order = models.PositiveIntegerField(default=0)
 
-    # sections through PageSection
-    sections = models.ManyToManyField(
-        "Section",
-        through="PageSection",
-        related_name="pages",
-        blank=True
-    )
 
     class Meta:
         ordering = ["order", "title"]
@@ -60,75 +53,40 @@ class Page(BaseModel):
 # Section Model
 # -------------------------
 
-class Section(BaseModel):
-    title = models.CharField(max_length=255, default="section",)
-    slug = models.SlugField(blank=True, unique=True)
-    is_active = models.BooleanField(default=True)
-    order = models.PositiveIntegerField(default=0, db_index=True)
-
-    def __str__(self):
-        return f"{self.id} - {self.title}"
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base_slug = slugify(self.title)
-            slug = base_slug
-            count = 1
-            while Section.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base_slug}-{count}"
-                count += 1
-            self.slug = slug
-        super().save(*args, **kwargs)
-
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
-
-# -------------------------
-# SectionItem (Generic)
-# -------------------------
-class SectionItem(BaseModel):
-    section = models.ForeignKey("Section", related_name="items", on_delete=models.CASCADE)
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)# Which model (FAQ, BlogPost...)
-    object_id = models.CharField(max_length=50)# ID of the object (e.g., FAQ with ID 7)
-    content_object = GenericForeignKey("content_type", "object_id")# The actual object
-
-    class Meta:
-        unique_together = ("section", "content_type", "object_id")
-
-    def __str__(self):
-        return f"{self.section.title} → {self.content_type} ({self.object_id})"
-
-# -------------------------
-# PageSection (Ordering)
-# -------------------------
-class PageSection(BaseModel):
-    id = models.CharField(
-        max_length=8,
-        unique=True,
-        editable=False,
-        primary_key=True
+class SectionType(models.Model):
+    name = models.CharField(max_length=100, unique=True, help_text="Name of the section type (e.g. Banner, About)")
+    description = models.TextField(blank=True, null=True)
+    schema = models.JSONField(
+        default=dict,
+        help_text="(Optional) Define expected fields for this section, e.g. {title: string, image: url}"
     )
-    page = models.ForeignKey(Page, on_delete=models.CASCADE, related_name="page_sections")
-    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name="section_pages")
-    order = models.PositiveIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["order"]
-        unique_together = ("page", "section")
+        verbose_name = ("Section Type")
+        verbose_name_plural = ("Section Types")
 
-    def __str__(self):
-        return f"{self.page.title} - {self.section.title} ({self.order})"
+    def _str_(self):
+        return self.name
+    
+class Section(models.Model):
+    page = models.ForeignKey(Page, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
+    section_type = models.ForeignKey(SectionType, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
+    content = models.JSONField(default=dict, help_text="Dynamic data for this section")
+    position = models.PositiveIntegerField(default=0, help_text="Order of section on the page")
 
-    def save(self, *args, **kwargs):
-        if not self.id:
-            self.id = self.generate_custom_id()
-        super().save(*args, **kwargs)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-    def generate_custom_id(self):
-        prefix = "PGSE"
-        suffix = f"{random.randint(0, 9999):04d}"
-        return prefix + suffix
+    class Meta:
+        verbose_name = ("Section")
+        verbose_name_plural =("Sections")
+        ordering = ["position"]
+
+    def _str_(self):
+        return f"{self.page.title} - {self.section_type.name} (Pos {self.position})"
 
 
 # -------------------------

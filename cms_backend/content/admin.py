@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Page, Section, PageSection,
+    Page,
     FAQ, BlogPost, Banner, SliderBanner, Slide,
     Feature, HowItWorks, Impression, ContactInfo
 )
@@ -34,15 +34,6 @@ class PageAdmin(admin.ModelAdmin, ActiveAdminMixin):
     actions = ["activate_items", "deactivate_items"]
 
 
-# -------------------------
-# Section Admin
-# -------------------------
-@admin.register(Section)
-class SectionAdmin(admin.ModelAdmin, ActiveAdminMixin):
-    list_display = ("id", "title", "is_active", "created_at", "updated_at")
-    search_fields = ("title",)
-    ordering = ("title",)
-    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
@@ -143,17 +134,6 @@ class ContactInfoAdmin(admin.ModelAdmin, ActiveAdminMixin):
     ordering = ("contact_type", "order")
     actions = ["activate_items", "deactivate_items"]
 
-
-# -------------------------
-# PageSection Admin
-# -------------------------
-@admin.register(PageSection)
-class PageSectionAdmin(admin.ModelAdmin, ActiveAdminMixin):
-    list_display = ("id", "page", "section", "order", "is_active", "created_at", "updated_at")
-    list_filter = ("is_active", "page")
-    search_fields = ("page__title", "section__title")
-    ordering = ("page", "order")
-    actions = ["activate_items", "deactivate_items"]
 
 
 # -------------------------
