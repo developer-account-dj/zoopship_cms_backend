@@ -53,7 +53,7 @@ class Page(BaseModel):
 # Section Model
 # -------------------------
 
-class SectionType(models.Model):
+class SectionType(BaseModel):
     name = models.CharField(max_length=100, unique=True, help_text="Name of the section type (e.g. Banner, About)")
     description = models.TextField(blank=True, null=True)
     schema = models.JSONField(
@@ -71,7 +71,7 @@ class SectionType(models.Model):
     def _str_(self):
         return self.name
     
-class Section(models.Model):
+class Section(BaseModel):
     page = models.ForeignKey(Page, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
     section_type = models.ForeignKey(SectionType, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
     content = models.JSONField(default=dict, help_text="Dynamic data for this section")

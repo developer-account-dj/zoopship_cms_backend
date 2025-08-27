@@ -161,3 +161,30 @@ class SlideAdmin(admin.ModelAdmin):
     list_display = ("id", "heading", "slider", "created_at", "updated_at")
     search_fields = ("heading", "description")
     list_filter = ("slider", "created_at")
+
+
+
+
+
+from .models import SectionType, Section
+
+
+@admin.register(SectionType)
+class SectionTypeAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "description", "created_at", "updated_at")
+    search_fields = ("name", "description")
+    list_filter = ("created_at", "updated_at")
+    ordering = ("-created_at",)
+
+
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "page", "section_type", "position", "created_at", "updated_at"
+    )
+    list_filter = ("section_type", "page", "created_at")
+    search_fields = ("page__title", "section_type__name")
+    ordering = ("page", "position")
+
+    # 👌 Inline editing for JSON fields in admin
+    readonly_fields = ("created_at", "updated_at")

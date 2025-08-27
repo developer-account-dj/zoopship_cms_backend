@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from .models import (
     Page, FAQ, BlogPost, Banner, HowItWorks,
-    Impression, Feature, ContactInfo, Slide, SliderBanner
+    Impression, Feature, ContactInfo, Slide, SliderBanner,Section,SectionType
 )
 User = get_user_model()
 
@@ -16,7 +16,6 @@ class PageSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     updated_by = serializers.PrimaryKeyRelatedField(read_only=True)
 
-    sections = serializers.SerializerMethodField()
     children = serializers.SerializerMethodField()
     parent_title = serializers.CharField(source="parent.title", read_only=True)
 
@@ -32,7 +31,6 @@ class PageSerializer(serializers.ModelSerializer):
             "order",
             "parent_id",
             "parent_title",
-            "sections",
             "children",
             "created_at",
             "updated_at",
@@ -69,6 +67,30 @@ class NavigationSerializer(serializers.ModelSerializer):
         # Only include active children ordered by `order`
         children = obj.children.filter(is_active=True).order_by("created_at")
         return NavigationSerializer(children, many=True).data
+    
+
+
+class SectionTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SectionType
+        fields = ["id", "name", "description", "schema", "created_at", "updated_at"]
+
+class SectionSerializer(serializers.ModelSerializer):
+    section_type = SectionTypeSerializer(read_only=True)
+    section_type_id = serializers.PrimaryKeyRelatedField(
+        queryset=SectionType.objects.all(), source="section_type", write_only=True
+    )
+    page_id = serializers.PrimaryKeyRelatedField(
+        queryset=Page.objects.all(), source="page", write_only=True
+    )
+
+    class Meta:
+        model = Section
+        fields = [
+            "id", "page", "page_id", "section_type", "section_type_id",
+            "content", "position", "created_at", "updated_at"
+        ]
+        depth = 1
     
 
 # ==========================

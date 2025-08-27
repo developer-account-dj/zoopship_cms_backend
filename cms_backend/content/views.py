@@ -9,13 +9,13 @@ from django.contrib.contenttypes.models import ContentType
 
 from .models import (
     Page, FAQ, BlogPost, Banner, ContactInfo, HowItWorks,
-    Impression, Feature,  Slide, SliderBanner, 
+    Impression, Feature,  Slide, SliderBanner, Section,SectionType
 )
 from .serializers import (
     PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
     NavigationSerializer, ContactInfoSerializer, HowItWorksSerializer,
     ImpressionSerializer, FeatureSerializer,
-    SliderBannerSerializer, SlideSerializer, 
+    SliderBannerSerializer, SlideSerializer, SectionSerializer,SectionTypeSerializer
 )
 from core.utils.response_helpers import success_response, error_response
 # ==========================
@@ -180,40 +180,6 @@ class PageViewSet(BaseViewSet):
             status=status.HTTP_200_OK
         )
     
-    @action(detail=True, methods=["get"], url_path="sections")
-    def sections(self, request, pk=None, *args, **kwargs):
-        """
-        Get all sections bound to this page (via PageSection).
-        Works regardless of slug/id usage.
-        """
-        # Try to resolve page by id first, then fallback to slug
-        page_id = kwargs.get("pk") or kwargs.get("id") or kwargs.get("slug")
-        try:
-            page = Page.objects.get(Q(id=page_id) | Q(slug=page_id))
-        except Page.DoesNotExist:
-            return Response({
-                "success": False,
-                "message": "Page not found",
-                "data": []
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        page_sections = PageSection.objects.filter(
-            page=page,
-            is_active=True,
-            section__is_active=True
-        ).select_related("section").order_by("order")
-
-        sections = [ps.section for ps in page_sections]
-        serializer = SectionSerializer(sections, many=True, context={"request": request})
-
-        return Response({
-            "success": True,
-            "message": "Sections of page retrieved successfully",
-            "data": serializer.data,
-        }, status=status.HTTP_200_OK)
-
-
-
 
 
 
@@ -517,4 +483,19 @@ class SliderBannerViewSet(BaseViewSet):
         return success_response(message="Slide deleted successfully")
 
     
-    
+# ==========================
+# Section Type ViewSet
+# ==========================
+class SectionTypeViewSet(BaseViewSet):
+    queryset = SectionType.objects.all().order_by("-created_at")
+    serializer_class = SectionTypeSerializer
+    basename = "section type"   # 👈 used in success/error messages
+
+
+# ==========================
+# Section ViewSet
+# ==========================
+class SectionViewSet(BaseViewSet):
+    queryset = Section.objects.all().order_by("position")
+    serializer_class = SectionSerializer
+    basename = "section"
