@@ -15,7 +15,7 @@ from .serializers import (
     PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
     NavigationSerializer, ContactInfoSerializer, HowItWorksSerializer,
     ImpressionSerializer, FeatureSerializer,
-    SliderBannerSerializer, SlideSerializer, SectionSerializer,SectionTypeSerializer
+    SliderBannerSerializer, SlideSerializer, SectionSerializer
 )
 from core.utils.response_helpers import success_response, error_response
 # ==========================
@@ -484,18 +484,36 @@ class SliderBannerViewSet(BaseViewSet):
 
     
 # ==========================
-# Section Type ViewSet
-# ==========================
-class SectionTypeViewSet(BaseViewSet):
-    queryset = SectionType.objects.all().order_by("-created_at")
-    serializer_class = SectionTypeSerializer
-    basename = "section type"   # 👈 used in success/error messages
-
-
-# ==========================
 # Section ViewSet
 # ==========================
+from .serializers import SectionSerializer, SectionListSerializer
+
 class SectionViewSet(BaseViewSet):
-    queryset = Section.objects.all().order_by("position")
-    serializer_class = SectionSerializer
-    basename = "section"
+    queryset = Section.objects.all()
+    lookup_field = "slug"
+
+    def get_serializer_class(self):
+        if self.action == "create" and isinstance(self.request.data, dict) and "sections" in self.request.data:
+            return SectionListSerializer
+        return SectionSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response({
+            "success": True,
+            "message": "Sections created successfully",
+            "data": SectionSerializer(result['sections'], many=True).data
+        }, status=status.HTTP_201_CREATED)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        page_slug = self.request.query_params.get("page_slug")
+        section_slug = self.request.query_params.get("section_slug")
+
+        if page_slug:
+            queryset = queryset.filter(page__slug=page_slug)
+        if section_slug:
+            queryset = queryset.filter(slug=section_slug)
+        return queryset

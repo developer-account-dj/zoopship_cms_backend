@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     PageViewSet, FAQViewSet, BlogPostViewSet, BannerViewSet,
     ContactInfoViewSet, HowItWorksViewSet, FeatureViewSet,
-    ImpressionViewSet, SliderBannerViewSet,SectionTypeViewSet,SectionViewSet
+    ImpressionViewSet, SliderBannerViewSet,SectionViewSet
 )
 
 # ==========================
@@ -21,10 +21,11 @@ router.register(r'impressions', ImpressionViewSet, basename='impression')
 router.register(r'features', FeatureViewSet, basename='feature')
 router.register(r'slider-banners', SliderBannerViewSet, basename='sliderbanner')
 
-router.register(r'section-types', SectionTypeViewSet, basename='section-type')
-router.register(r'sections', SectionViewSet, basename='section')
+# router.register(r'section-types', SectionTypeViewSet, basename='section-type')
+router.register(r'sections',SectionViewSet, basename='section')
 
 
 urlpatterns = [
     path('', include(router.urls)),
+    
 ]

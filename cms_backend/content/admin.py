@@ -180,11 +180,10 @@ class SectionTypeAdmin(admin.ModelAdmin):
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "page", "section_type", "position", "created_at", "updated_at"
+        "id", "page", "section_type", "order", "created_at", "updated_at"
     )
     list_filter = ("section_type", "page", "created_at")
     search_fields = ("page__title", "section_type__name")
-    ordering = ("page", "position")
 
     # 👌 Inline editing for JSON fields in admin
     readonly_fields = ("created_at", "updated_at")

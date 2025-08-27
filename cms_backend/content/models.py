@@ -71,22 +71,35 @@ class SectionType(BaseModel):
     def _str_(self):
         return self.name
     
+
+    
 class Section(BaseModel):
     page = models.ForeignKey(Page, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
     section_type = models.ForeignKey(SectionType, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
-    content = models.JSONField(default=dict, help_text="Dynamic data for this section")
-    position = models.PositiveIntegerField(default=0, help_text="Order of section on the page")
+    data = models.JSONField(default=dict, help_text="Dynamic data for this section")
+    order = models.PositiveIntegerField(default=0, help_text="Order of section on the page")
 
-    created_at = models.DateTimeField(auto_now_add=True)
+
+     # ✅ New fields
+    title = models.CharField(max_length=200, help_text="Title of this specific section",unique=True)
+    slug = models.SlugField(max_length=220, unique=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)    
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = ("Section")
-        verbose_name_plural =("Sections")
-        ordering = ["position"]
+        verbose_name = "Section"
+        verbose_name_plural = "Sections"
+        ordering = ["order"]
 
     def _str_(self):
-        return f"{self.page.title} - {self.section_type.name} (Pos {self.position})"
+        return f"{self.page.title if self.page else 'No Page'} - {self.section_type.name if self.section_type else 'No Type'} (Order {self.order})"
+    
+
+    def save(self, *args, **kwargs):
+        if not self.slug:  # auto-generate slug from title
+            self.slug = slugify(self.title)
+        super().save(*args, **kwargs)
 
 
 # -------------------------

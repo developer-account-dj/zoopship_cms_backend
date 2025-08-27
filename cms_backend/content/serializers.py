@@ -69,30 +69,44 @@ class NavigationSerializer(serializers.ModelSerializer):
         return NavigationSerializer(children, many=True).data
     
 
-
-class SectionTypeSerializer(serializers.ModelSerializer):
+class pageminiserailizer(serializers.ModelSerializer):
     class Meta:
-        model = SectionType
-        fields = ["id", "name", "description", "schema", "created_at", "updated_at"]
+        model=Page
+        fields = ["id","slug", "title", "is_active"]
+
+
 
 class SectionSerializer(serializers.ModelSerializer):
-    section_type = SectionTypeSerializer(read_only=True)
-    section_type_id = serializers.PrimaryKeyRelatedField(
-        queryset=SectionType.objects.all(), source="section_type", write_only=True
-    )
-    page_id = serializers.PrimaryKeyRelatedField(
-        queryset=Page.objects.all(), source="page", write_only=True
-    )
-
+    page = pageminiserailizer(read_only=True)
     class Meta:
         model = Section
-        fields = [
-            "id", "page", "page_id", "section_type", "section_type_id",
-            "content", "position", "created_at", "updated_at"
-        ]
-        depth = 1
-    
+        fields = ["id","slug", "title", "order", "data","page"]
 
+
+class SectionListSerializer(serializers.Serializer):
+    page_id = serializers.IntegerField(required=False, write_only=True)
+    page_slug = serializers.SlugField(required=False, write_only=True)
+    sections = SectionSerializer(many=True)
+
+    def create(self, validated_data):
+        sections_data = validated_data.pop("sections")
+        page_id = validated_data.get("page_id")
+        page_slug = validated_data.get("page_slug")
+
+        if page_id:
+            page = Page.objects.get(id=page_id)
+        elif page_slug:
+            page = Page.objects.get(slug=page_slug)
+        else:
+            raise serializers.ValidationError("Either page_id or page_slug must be provided")
+
+        created_sections = []
+        for section_data in sections_data:
+            section = Section.objects.create(page=page, **section_data)
+            created_sections.append(section)
+
+        # Wrap in dict to match serializer field
+        return {"sections": created_sections}
 # ==========================
 # CONTENT SERIALIZERS
 # ==========================
