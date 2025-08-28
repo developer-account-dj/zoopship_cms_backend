@@ -166,15 +166,8 @@ class SlideAdmin(admin.ModelAdmin):
 
 
 
-from .models import SectionType, Section
+from .models import Section
 
-
-@admin.register(SectionType)
-class SectionTypeAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "description", "created_at", "updated_at")
-    search_fields = ("name", "description")
-    list_filter = ("created_at", "updated_at")
-    ordering = ("-created_at",)
 
 
 @admin.register(Section)

@@ -81,8 +81,8 @@ class Section(BaseModel):
 
 
      # ✅ New fields
-    title = models.CharField(max_length=200, help_text="Title of this specific section",unique=True)
-    slug = models.SlugField(max_length=220, unique=True, blank=True)
+    title = models.CharField(max_length=200, help_text="Title of this specific section")
+    slug = models.SlugField(max_length=220, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)    
     updated_at = models.DateTimeField(auto_now=True)

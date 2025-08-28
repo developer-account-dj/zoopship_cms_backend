@@ -505,7 +505,7 @@ class SectionViewSet(BaseViewSet):
             "success": True,
             "message": "Sections created successfully",
             "data": SectionSerializer(result['sections'], many=True).data
-        }, status=status.HTTP_201_CREATED)
+        }, status=status.HTTP_201_CREATED)        
 
     def get_queryset(self):
         queryset = super().get_queryset()

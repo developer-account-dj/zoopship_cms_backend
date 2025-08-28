@@ -84,7 +84,8 @@ class SectionSerializer(serializers.ModelSerializer):
 
 
 class SectionListSerializer(serializers.Serializer):
-    page_id = serializers.IntegerField(required=False, write_only=True)
+    # page_id = serializers.IntegerField(required=False, write_only=True)
+    page_id = serializers.CharField(required=False, write_only=True) 
     page_slug = serializers.SlugField(required=False, write_only=True)
     sections = SectionSerializer(many=True)
 
@@ -92,21 +93,48 @@ class SectionListSerializer(serializers.Serializer):
         sections_data = validated_data.pop("sections")
         page_id = validated_data.get("page_id")
         page_slug = validated_data.get("page_slug")
-
-        if page_id:
-            page = Page.objects.get(id=page_id)
+    
+        page = None
+    
+        if page_id and page_slug:
+            # Both provided: check they match the same page
+            try:
+                page_by_id = Page.objects.get(id=page_id)
+            except Page.DoesNotExist:
+                raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
+            
+            try:
+                page_by_slug = Page.objects.get(slug=page_slug)
+            except Page.DoesNotExist:
+                raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
+            
+            if page_by_id.id != page_by_slug.id:
+                raise serializers.ValidationError("page_id and page_slug do not match the same page")
+            
+            page = page_by_id  # both match
+    
+        elif page_id:
+            try:
+                page = Page.objects.get(id=page_id)
+            except Page.DoesNotExist:
+                raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
+        
         elif page_slug:
-            page = Page.objects.get(slug=page_slug)
+            try:
+                page = Page.objects.get(slug=page_slug)
+            except Page.DoesNotExist:
+                raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
+        
         else:
             raise serializers.ValidationError("Either page_id or page_slug must be provided")
-
+    
         created_sections = []
         for section_data in sections_data:
             section = Section.objects.create(page=page, **section_data)
             created_sections.append(section)
+    
+        return {"sections": created_sections, "page": page}  # Include page for response
 
-        # Wrap in dict to match serializer field
-        return {"sections": created_sections}
 # ==========================
 # CONTENT SERIALIZERS
 # ==========================
