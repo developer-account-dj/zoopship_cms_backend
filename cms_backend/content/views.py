@@ -487,13 +487,46 @@ class SliderBannerViewSet(BaseViewSet):
 # Section ViewSet
 # ==========================
 from .serializers import SectionSerializer, SectionListSerializer
+from rest_framework import parsers
+# class SectionViewSet(BaseViewSet):
+#     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+#     queryset = Section.objects.all()
+#     lookup_field = "slug"
+
+#     def get_serializer_class(self):
+#         if self.action == "create" and isinstance(self.request.data, dict) and "sections" in self.request.data:
+#             return SectionListSerializer
+#         return SectionSerializer
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         result = serializer.save()
+#         return Response({
+#             "success": True,
+#             "message": "Sections created successfully",
+#             "data": SectionSerializer(result['sections'], many=True).data
+#         }, status=status.HTTP_201_CREATED)        
+
+#     def get_queryset(self):
+#         queryset = super().get_queryset()
+#         page_slug = self.request.query_params.get("page_slug")
+#         section_slug = self.request.query_params.get("section_slug")
+
+#         if page_slug:
+#             queryset = queryset.filter(page__slug=page_slug)
+#         if section_slug:
+#             queryset = queryset.filter(slug=section_slug)
+#         return queryset
+
 
 class SectionViewSet(BaseViewSet):
     queryset = Section.objects.all()
     lookup_field = "slug"
+    parser_classes = [parsers.JSONParser]  # raw JSON only
 
     def get_serializer_class(self):
-        if self.action == "create" and isinstance(self.request.data, dict) and "sections" in self.request.data:
+        if self.action == "create" and "sections" in self.request.data:
             return SectionListSerializer
         return SectionSerializer
 
@@ -504,16 +537,26 @@ class SectionViewSet(BaseViewSet):
         return Response({
             "success": True,
             "message": "Sections created successfully",
-            "data": SectionSerializer(result['sections'], many=True).data
-        }, status=status.HTTP_201_CREATED)        
+             "data": SectionSerializer(result['sections'], many=True, context={'request': request}).data
+        }, status=status.HTTP_201_CREATED)
+
+
 
     def get_queryset(self):
         queryset = super().get_queryset()
         page_slug = self.request.query_params.get("page_slug")
+        page_id = self.request.query_params.get("page_id")
         section_slug = self.request.query_params.get("section_slug")
-
-        if page_slug:
+        section_id = self.request.query_params.get("section_id")
+    
+        if page_id:
+            queryset = queryset.filter(page__id=page_id)
+        elif page_slug:
             queryset = queryset.filter(page__slug=page_slug)
-        if section_slug:
+    
+        if section_id:
+            queryset = queryset.filter(id=section_id)
+        elif section_slug:
             queryset = queryset.filter(slug=section_slug)
+    
         return queryset

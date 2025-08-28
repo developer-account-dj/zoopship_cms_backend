@@ -75,12 +75,43 @@ class pageminiserailizer(serializers.ModelSerializer):
         fields = ["id","slug", "title", "is_active"]
 
 
-
+from django.core.files.storage import default_storage
+from drf_extra_fields.fields import Base64ImageField
 class SectionSerializer(serializers.ModelSerializer):
     page = pageminiserailizer(read_only=True)
+    
     class Meta:
         model = Section
-        fields = ["id","slug", "title", "order", "data","page"]
+        fields = ["id", "slug", "title", "order", "data", "page"]
+
+    def validate_data(self, value):
+        """
+        Handle Base64 images in 'data' dict.
+        """
+        for key, file_data in value.items():
+            if isinstance(file_data, str) and file_data.startswith("data:image"):
+                # Convert Base64 string to InMemoryUploadedFile
+                base64_field = Base64ImageField()
+                file_obj = base64_field.to_internal_value(file_data)
+                # Save to default storage
+                file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)
+                value[key] = default_storage.url(file_path)
+        return value
+    
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+
+        request = self.context.get("request")
+        data = rep.get("data", {})
+
+        # Fix media paths inside data dict
+        for key, value in data.items():
+            if isinstance(value, str) and value.startswith("/media/") and request:
+                data[key] = request.build_absolute_uri(value)
+
+        rep["data"] = data
+        return rep
 
 
 class SectionListSerializer(serializers.Serializer):

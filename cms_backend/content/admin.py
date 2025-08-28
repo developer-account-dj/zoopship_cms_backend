@@ -173,7 +173,7 @@ from .models import Section
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "page", "section_type", "order", "created_at", "updated_at"
+        "id", "page", "title", "order", "created_at", "updated_at"
     )
     list_filter = ("section_type", "page", "created_at")
     search_fields = ("page__title", "section_type__name")
