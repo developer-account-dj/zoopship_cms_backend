@@ -488,38 +488,8 @@ class SliderBannerViewSet(BaseViewSet):
 # ==========================
 from .serializers import SectionSerializer, SectionListSerializer
 from rest_framework import parsers
-# class SectionViewSet(BaseViewSet):
-#     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
-#     queryset = Section.objects.all()
-#     lookup_field = "slug"
 
-#     def get_serializer_class(self):
-#         if self.action == "create" and isinstance(self.request.data, dict) and "sections" in self.request.data:
-#             return SectionListSerializer
-#         return SectionSerializer
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         result = serializer.save()
-#         return Response({
-#             "success": True,
-#             "message": "Sections created successfully",
-#             "data": SectionSerializer(result['sections'], many=True).data
-#         }, status=status.HTTP_201_CREATED)        
-
-#     def get_queryset(self):
-#         queryset = super().get_queryset()
-#         page_slug = self.request.query_params.get("page_slug")
-#         section_slug = self.request.query_params.get("section_slug")
-
-#         if page_slug:
-#             queryset = queryset.filter(page__slug=page_slug)
-#         if section_slug:
-#             queryset = queryset.filter(slug=section_slug)
-#         return queryset
-
-
+from rest_framework.exceptions import ValidationError, NotFound
 class SectionViewSet(BaseViewSet):
     queryset = Section.objects.all()
     lookup_field = "slug"
@@ -539,8 +509,7 @@ class SectionViewSet(BaseViewSet):
             "message": "Sections created successfully",
              "data": SectionSerializer(result['sections'], many=True, context={'request': request}).data
         }, status=status.HTTP_201_CREATED)
-
-
+    
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -549,14 +518,32 @@ class SectionViewSet(BaseViewSet):
         section_slug = self.request.query_params.get("section_slug")
         section_id = self.request.query_params.get("section_id")
     
+        # 🚫 Validate conflicting params
+        if page_id and page_slug:
+            raise ValidationError("Please provide either 'page_id' or 'page_slug', not both.")
+        if section_id and section_slug:
+            raise ValidationError("Please provide either 'section_id' or 'section_slug', not both.")
+    
+        # ✅ Filter by Page
         if page_id:
+            if not queryset.filter(page__id=page_id).exists():
+                raise NotFound(detail=f"Page with id {page_id} not found.")
             queryset = queryset.filter(page__id=page_id)
+    
         elif page_slug:
+            if not queryset.filter(page__slug=page_slug).exists():
+                raise NotFound(detail=f"Page with slug '{page_slug}' not found.")
             queryset = queryset.filter(page__slug=page_slug)
     
+        # ✅ Filter by Section
         if section_id:
+            if not queryset.filter(id=section_id).exists():
+                raise NotFound(detail=f"Section with id {section_id} not found.")
             queryset = queryset.filter(id=section_id)
+    
         elif section_slug:
+            if not queryset.filter(slug=section_slug).exists():
+                raise NotFound(detail=f"Section with slug '{section_slug}' not found.")
             queryset = queryset.filter(slug=section_slug)
     
         return queryset
