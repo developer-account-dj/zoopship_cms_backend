@@ -173,10 +173,13 @@ from .models import Section
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
     list_display = (
-        "id","is_active","page", "title", "order", "created_at", "updated_at"
-    ) 
-    list_filter = ("section_type", "page", "created_at")
-    search_fields = ("page__title", "section_type__name")
+        "id", "is_active", "get_pages", "order", "created_at", "updated_at"
+    )
+    list_filter = ("section_type", "created_at")  # removed "page" from here
+    search_fields = ("pages__title", "section_type")  # updated for M2M lookup
 
-    # 👌 Inline editing for JSON fields in admin
     readonly_fields = ("created_at", "updated_at")
+
+    def get_pages(self, obj):
+        return ", ".join([p.title for p in obj.pages.all()])
+    get_pages.short_description = "Pages"

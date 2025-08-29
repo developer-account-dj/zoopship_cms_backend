@@ -492,6 +492,7 @@ from rest_framework import parsers
 from rest_framework.exceptions import ValidationError, NotFound
 class SectionViewSet(BaseViewSet):
     queryset = Section.objects.all()
+    serializer_class = SectionSerializer
     lookup_field = "id"
     parser_classes = [parsers.JSONParser]  # raw JSON only
 
@@ -526,14 +527,14 @@ class SectionViewSet(BaseViewSet):
     
         # ✅ Filter by Page
         if page_id:
-            if not queryset.filter(page__id=page_id).exists():
+            if not queryset.filter(pages__id=page_id).exists():
                 raise NotFound(detail=f"Page with id {page_id} not found.")
-            queryset = queryset.filter(page__id=page_id)
+            queryset = queryset.filter(pages__id=page_id)
     
         elif page_slug:
-            if not queryset.filter(page__slug=page_slug).exists():
+            if not queryset.filter(pages__slug=page_slug).exists():
                 raise NotFound(detail=f"Page with slug '{page_slug}' not found.")
-            queryset = queryset.filter(page__slug=page_slug)
+            queryset = queryset.filter(pages__slug=page_slug)
     
         # ✅ Filter by Section
         if section_id:
@@ -549,36 +550,68 @@ class SectionViewSet(BaseViewSet):
         return queryset
     
 
-    def delete(self, request, *args, **kwargs):
-        page_id = request.query_params.get("page_id")
+
+
+    def patch(self, request, *args, **kwargs):
         section_id = request.query_params.get("section_id")
+        page_id = request.query_params.get("page_id")
 
-        if not page_id or not section_id:
-            return Response({
-                "success": False,
-                "message": "Both 'page_id' and 'section_id' are required."
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            Section.objects.get(id=section_id, page__id=page_id)
-
-        except ValueError:
-            return Response({
-                "success": False,
-                "message": "'page_id' and 'section_id' must be integers."
-            }, status=status.HTTP_400_BAD_REQUEST)
+        if not section_id or not page_id:
+            return Response(
+                {"success": False, "message": "Both section_id and page_id are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
-            section = Section.objects.get(id=section_id, page__id=page_id)
+            instance = Section.objects.get(id=section_id, pages__id=page_id)
         except Section.DoesNotExist:
-            return Response({
-                "success": False,
-                "message": f"Section with id {section_id} not found for Page with id {page_id}."
-            }, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"success": False, "message": f"Section {section_id} not found for Page {page_id}"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        section.delete()
+        # ✅ partial=True ensures missing fields won’t be reset
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
 
         return Response({
             "success": True,
-            "message": f"Section with id {section_id} deleted from Page {page_id}."
+            "message": f"Section {section_id} updated successfully for Page {page_id}.",
+            "data": serializer.data
         }, status=status.HTTP_200_OK)
+    
+    def delete(self, request, *args, **kwargs):
+        section_id = request.query_params.get("section_id")
+        page_id = request.query_params.get("page_id")
+    
+        if not section_id or not page_id:
+            return Response(
+                {"detail": "Both section_id and page_id are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    
+        try:
+            section = Section.objects.get(id=section_id)
+        except Section.DoesNotExist:
+            return Response(
+                {"detail": f"Section with id '{section_id}' not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+    
+        try:
+            page = Page.objects.get(id=page_id)
+        except Page.DoesNotExist:
+            return Response(
+                {"detail": f"Page with id '{page_id}' not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+    
+        # ❌ Don't delete the whole section
+        # ✅ Just remove the relation to that page
+        section.pages.remove(page)
+    
+        return Response(
+            {"detail": f"Section {section_id} unassigned from page {page_id}"},
+            status=status.HTTP_204_NO_CONTENT,
+        )

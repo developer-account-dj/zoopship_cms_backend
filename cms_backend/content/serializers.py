@@ -19,11 +19,11 @@ class pageminiserailizer(serializers.ModelSerializer):
 from django.core.files.storage import default_storage
 from drf_extra_fields.fields import Base64ImageField
 class SectionSerializer(serializers.ModelSerializer):
-    page = pageminiserailizer(read_only=True)
+    pages = pageminiserailizer(read_only=True, many=True)  # show all linked pages
     
     class Meta:
         model = Section
-        fields = ["id", "slug","is_active", "title","sectiontype", "order", "data", "page",]
+        fields = ["id", "slug", "is_active", "title", "section_type", "order", "data", "pages"]
 
     def validate_data(self, value):
         """
@@ -53,6 +53,16 @@ class SectionSerializer(serializers.ModelSerializer):
 
         rep["data"] = data
         return rep
+    
+    def update(self, instance, validated_data):
+        # ✅ Merge JSON instead of replacing
+        new_data = validated_data.pop("data", None)
+        if new_data is not None:
+            merged_data = {**instance.data, **new_data}
+            validated_data["data"] = merged_data
+        return super().update(instance, validated_data)
+
+
 
 class PageSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -61,7 +71,7 @@ class PageSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
     parent_title = serializers.CharField(source="parent.title", read_only=True)
 
-    # 🔁 Add these for section handling
+    # 🔁 ManyToMany field now
     sections = serializers.PrimaryKeyRelatedField(
         queryset=Section.objects.all(),
         many=True,
@@ -83,8 +93,8 @@ class PageSerializer(serializers.ModelSerializer):
             "parent_id",
             "parent_title",
             "children",
-            "sections",         # 🆕 Accept section IDs for assignment
-            "section_details",  # 🆕 Return full section info
+            "sections",         # accepts list of IDs
+            "section_details",  # returns nested section info
             "created_at",
             "updated_at",
             "created_by",
@@ -106,10 +116,8 @@ class PageSerializer(serializers.ModelSerializer):
         section_objs = validated_data.pop("sections", [])
         page = super().create(validated_data)
 
-        for section in section_objs:
-            section.page = page
-            section.save()
-
+        if section_objs:
+            page.sections.set(section_objs)  # ✅ correct way for M2M
         return page
 
     def update(self, instance, validated_data):
@@ -117,14 +125,7 @@ class PageSerializer(serializers.ModelSerializer):
         page = super().update(instance, validated_data)
 
         if section_objs is not None:
-            # Unassign sections no longer associated
-            Section.objects.filter(page=page).exclude(id__in=[s.id for s in section_objs]).update(page=None)
-
-            # Assign the provided sections
-            for section in section_objs:
-                section.page = page
-                section.save()
-
+            page.sections.set(section_objs)  # ✅ reset to given sections
         return page
 
 # ==========================
@@ -150,7 +151,7 @@ class NavigationSerializer(serializers.ModelSerializer):
 
 class SectionListSerializer(serializers.Serializer):
     # page_id = serializers.IntegerField(required=False, write_only=True)
-    page_id = serializers.CharField(required=False, write_only=True) 
+    page_id = serializers.CharField(required=False, write_only=True)
     page_slug = serializers.SlugField(required=False, write_only=True)
     sections = SectionSerializer(many=True)
 
@@ -158,47 +159,92 @@ class SectionListSerializer(serializers.Serializer):
         sections_data = validated_data.pop("sections")
         page_id = validated_data.get("page_id")
         page_slug = validated_data.get("page_slug")
-    
+
+        # 🔎 Resolve page
         page = None
-    
         if page_id and page_slug:
-            # Both provided: check they match the same page
             try:
                 page_by_id = Page.objects.get(id=page_id)
             except Page.DoesNotExist:
                 raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
-            
+
             try:
                 page_by_slug = Page.objects.get(slug=page_slug)
             except Page.DoesNotExist:
                 raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
-            
+
             if page_by_id.id != page_by_slug.id:
                 raise serializers.ValidationError("page_id and page_slug do not match the same page")
-            
-            page = page_by_id  # both match
-    
+
+            page = page_by_id
         elif page_id:
             try:
                 page = Page.objects.get(id=page_id)
             except Page.DoesNotExist:
                 raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
-        
         elif page_slug:
             try:
                 page = Page.objects.get(slug=page_slug)
             except Page.DoesNotExist:
                 raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
-        
         else:
             raise serializers.ValidationError("Either page_id or page_slug must be provided")
-    
+
+        # ✅ Create sections and assign page via M2M
         created_sections = []
         for section_data in sections_data:
-            section = Section.objects.create(page=page, **section_data)
+            section = Section.objects.create(**section_data)  # 👈 don't pass page
+            section.pages.add(page)  # 👈 assign page properly
             created_sections.append(section)
+
+        return {"sections": created_sections, "page": page}
+
+
+    # def create(self, validated_data):
+    #     sections_data = validated_data.pop("sections")
+    #     page_id = validated_data.get("page_id")
+    #     page_slug = validated_data.get("page_slug")
     
-        return {"sections": created_sections, "page": page}  # Include page for response
+    #     page = None
+    
+    #     if page_id and page_slug:
+    #         # Both provided: check they match the same page
+    #         try:
+    #             page_by_id = Page.objects.get(id=page_id)
+    #         except Page.DoesNotExist:
+    #             raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
+            
+    #         try:
+    #             page_by_slug = Page.objects.get(slug=page_slug)
+    #         except Page.DoesNotExist:
+    #             raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
+            
+    #         if page_by_id.id != page_by_slug.id:
+    #             raise serializers.ValidationError("page_id and page_slug do not match the same page")
+            
+    #         page = page_by_id  # both match
+    
+    #     elif page_id:
+    #         try:
+    #             page = Page.objects.get(id=page_id)
+    #         except Page.DoesNotExist:
+    #             raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
+        
+    #     elif page_slug:
+    #         try:
+    #             page = Page.objects.get(slug=page_slug)
+    #         except Page.DoesNotExist:
+    #             raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
+        
+    #     else:
+    #         raise serializers.ValidationError("Either page_id or page_slug must be provided")
+    
+    #     created_sections = []
+    #     for section_data in sections_data:
+    #         section = Section.objects.create(page=page, **section_data)
+    #         created_sections.append(section)
+    
+    #     return {"sections": created_sections, "page": page}  # Include page for response
 
 # ==========================
 # CONTENT SERIALIZERS

@@ -74,12 +74,11 @@ class SectionType(BaseModel):
 
     
 class Section(BaseModel):
-    page = models.ForeignKey(Page, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
-    section_type = models.ForeignKey(SectionType, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
+    pages = models.ManyToManyField(Page, related_name="sections", blank=True)
     data = models.JSONField(default=dict, help_text="Dynamic data for this section")
     order = models.PositiveIntegerField(default=0, help_text="Order of section on the page")
     is_active = models.BooleanField(default=True)
-    sectiontype=models.CharField(max_length=120,default="sectiontype")
+    section_type=models.CharField(max_length=120,default="sectiontype")
 
 
      # ✅ New fields
@@ -95,7 +94,7 @@ class Section(BaseModel):
         ordering = ["order"]
 
     def _str_(self):
-        return f"{self.page.title if self.page else 'No Page'} - {self.section_type.name if self.section_type else 'No Type'} (Order {self.order})"
+        return f"{self.title} - {self.section_type} (Order {self.order})"
     
 
     def save(self, *args, **kwargs):
