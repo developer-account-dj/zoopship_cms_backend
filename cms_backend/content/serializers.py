@@ -11,69 +11,10 @@ User = get_user_model()
 # ==========================
 # PAGE SERIALIZER
 # ==========================
-
-class PageSerializer(serializers.ModelSerializer):
-    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
-    updated_by = serializers.PrimaryKeyRelatedField(read_only=True)
-
-    children = serializers.SerializerMethodField()
-    parent_title = serializers.CharField(source="parent.title", read_only=True)
-
-    class Meta:
-        model = Page
-        fields = [
-            "id",
-            "name",
-            "title",
-            "slug",
-            "content",
-            "is_active",
-            "order",
-            "parent_id",
-            "parent_title",
-            "children",
-            "created_at",
-            "updated_at",
-            "created_by",
-            "updated_by",
-        ]
-        read_only_fields = [
-            "slug",
-            "created_at",
-            "updated_at",
-            "created_by",
-            "updated_by",
-        ]
-
-
-    def get_children(self, obj):
-        # ✅ return ALL children (active + inactive)
-        children = obj.children.all().order_by("order")
-        return PageSerializer(children, many=True).data
-
-
-# ==========================
-# NAVIGATION SERIALIZER
-# ==========================
-
-class NavigationSerializer(serializers.ModelSerializer):
-    children = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Page
-        fields = ["id", "title", "slug", "children", "order", "created_at"]
-
-    def get_children(self, obj):
-        # Only include active children ordered by `order`
-        children = obj.children.filter(is_active=True).order_by("created_at")
-        return NavigationSerializer(children, many=True).data
-    
-
 class pageminiserailizer(serializers.ModelSerializer):
     class Meta:
         model=Page
         fields = ["id","slug", "title", "is_active"]
-
 
 from django.core.files.storage import default_storage
 from drf_extra_fields.fields import Base64ImageField
@@ -112,6 +53,99 @@ class SectionSerializer(serializers.ModelSerializer):
 
         rep["data"] = data
         return rep
+
+class PageSerializer(serializers.ModelSerializer):
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    updated_by = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    children = serializers.SerializerMethodField()
+    parent_title = serializers.CharField(source="parent.title", read_only=True)
+
+    # 🔁 Add these for section handling
+    sections = serializers.PrimaryKeyRelatedField(
+        queryset=Section.objects.all(),
+        many=True,
+        write_only=True,
+        required=False
+    )
+    section_details = SectionSerializer(source="sections", many=True, read_only=True)
+
+    class Meta:
+        model = Page
+        fields = [
+            "id",
+            "name",
+            "title",
+            "slug",
+            "content",
+            "is_active",
+            "order",
+            "parent_id",
+            "parent_title",
+            "children",
+            "sections",         # 🆕 Accept section IDs for assignment
+            "section_details",  # 🆕 Return full section info
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+        ]
+        read_only_fields = [
+            "slug",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+        ]
+
+    def get_children(self, obj):
+        children = obj.children.all().order_by("order")
+        return PageSerializer(children, many=True, context=self.context).data
+
+    def create(self, validated_data):
+        section_objs = validated_data.pop("sections", [])
+        page = super().create(validated_data)
+
+        for section in section_objs:
+            section.page = page
+            section.save()
+
+        return page
+
+    def update(self, instance, validated_data):
+        section_objs = validated_data.pop("sections", None)
+        page = super().update(instance, validated_data)
+
+        if section_objs is not None:
+            # Unassign sections no longer associated
+            Section.objects.filter(page=page).exclude(id__in=[s.id for s in section_objs]).update(page=None)
+
+            # Assign the provided sections
+            for section in section_objs:
+                section.page = page
+                section.save()
+
+        return page
+
+# ==========================
+# NAVIGATION SERIALIZER
+# ==========================
+
+class NavigationSerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Page
+        fields = ["id", "title", "slug", "children", "order", "created_at"]
+
+    def get_children(self, obj):
+        # Only include active children ordered by `order`
+        children = obj.children.filter(is_active=True).order_by("created_at")
+        return NavigationSerializer(children, many=True).data
+    
+
+
+
 
 
 class SectionListSerializer(serializers.Serializer):
