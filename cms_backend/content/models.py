@@ -79,6 +79,7 @@ class Section(BaseModel):
     data = models.JSONField(default=dict, help_text="Dynamic data for this section")
     order = models.PositiveIntegerField(default=0, help_text="Order of section on the page")
     is_active = models.BooleanField(default=True)
+    sectiontype=models.CharField(max_length=120,default="sectiontype")
 
 
      # ✅ New fields

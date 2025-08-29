@@ -82,7 +82,7 @@ class SectionSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Section
-        fields = ["id", "slug", "title", "order", "data", "page"]
+        fields = ["id", "slug","is_active", "title","sectiontype", "order", "data", "page",]
 
     def validate_data(self, value):
         """

@@ -492,7 +492,7 @@ from rest_framework import parsers
 from rest_framework.exceptions import ValidationError, NotFound
 class SectionViewSet(BaseViewSet):
     queryset = Section.objects.all()
-    lookup_field = "slug"
+    lookup_field = "id"
     parser_classes = [parsers.JSONParser]  # raw JSON only
 
     def get_serializer_class(self):
@@ -547,3 +547,38 @@ class SectionViewSet(BaseViewSet):
             queryset = queryset.filter(slug=section_slug)
     
         return queryset
+    
+
+    def delete(self, request, *args, **kwargs):
+        page_id = request.query_params.get("page_id")
+        section_id = request.query_params.get("section_id")
+
+        if not page_id or not section_id:
+            return Response({
+                "success": False,
+                "message": "Both 'page_id' and 'section_id' are required."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            Section.objects.get(id=section_id, page__id=page_id)
+
+        except ValueError:
+            return Response({
+                "success": False,
+                "message": "'page_id' and 'section_id' must be integers."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            section = Section.objects.get(id=section_id, page__id=page_id)
+        except Section.DoesNotExist:
+            return Response({
+                "success": False,
+                "message": f"Section with id {section_id} not found for Page with id {page_id}."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        section.delete()
+
+        return Response({
+            "success": True,
+            "message": f"Section with id {section_id} deleted from Page {page_id}."
+        }, status=status.HTTP_200_OK)
