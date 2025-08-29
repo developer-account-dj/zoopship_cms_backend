@@ -78,6 +78,7 @@ class Section(BaseModel):
     section_type = models.ForeignKey(SectionType, related_name="sections", on_delete=models.CASCADE,null=True, blank=True)
     data = models.JSONField(default=dict, help_text="Dynamic data for this section")
     order = models.PositiveIntegerField(default=0, help_text="Order of section on the page")
+    is_active = models.BooleanField(default=True)
 
 
      # ✅ New fields
