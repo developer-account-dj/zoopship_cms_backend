@@ -488,13 +488,37 @@ class SliderBannerViewSet(BaseViewSet):
 # ==========================
 from .serializers import SectionSerializer, SectionListSerializer
 from rest_framework import parsers
-
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError, NotFound
+
+class SectionPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            "success": True,
+            "message": "Section list fetched",
+            "count": self.page.paginator.count,
+            "next": self.get_next_link(),
+            "previous": self.get_previous_link(),
+            "data": data,
+        })
+
+from django.db.models import Prefetch
 class SectionViewSet(BaseViewSet):
-    queryset = Section.objects.all()
     serializer_class = SectionSerializer
     lookup_field = "id"
-    parser_classes = [parsers.JSONParser]  # raw JSON only
+    parser_classes = [parsers.JSONParser]
+    pagination_class = SectionPagination
+
+    # ✅ Only select required fields and prefetch pages
+    queryset = Section.objects.only(
+        "id", "slug", "is_active", "title", "section_type", "order", "data"
+    ).prefetch_related(
+        Prefetch('pages', queryset=Page.objects.defer("content", "parent_id", "created_at", "updated_at"))
+    ).order_by("order")
 
     def get_serializer_class(self):
         if self.action == "create" and "sections" in self.request.data:
@@ -508,9 +532,28 @@ class SectionViewSet(BaseViewSet):
         return Response({
             "success": True,
             "message": "Sections created successfully",
-             "data": SectionSerializer(result['sections'], many=True, context={'request': request}).data
+            "data": SectionSerializer(result['sections'], many=True, context={'request': request}).data
         }, status=status.HTTP_201_CREATED)
-    
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # ✅ If pagination is requested
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True, context={"request": request})
+            return self.get_paginated_response(serializer.data)
+
+        # ✅ Return all sections without pagination
+        serializer = self.get_serializer(queryset, many=True, context={"request": request})
+        return Response({
+            "success": True,
+            "message": "Section list fetched",
+            "count": queryset.count(),
+            "next": None,
+            "previous": None,
+            "data": serializer.data
+        })
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -518,39 +561,25 @@ class SectionViewSet(BaseViewSet):
         page_id = self.request.query_params.get("page_id")
         section_slug = self.request.query_params.get("section_slug")
         section_id = self.request.query_params.get("section_id")
-    
-        # 🚫 Validate conflicting params
+
         if page_id and page_slug:
-            raise ValidationError("Please provide either 'page_id' or 'page_slug', not both.")
+            raise ValidationError("Provide either 'page_id' or 'page_slug', not both.")
         if section_id and section_slug:
-            raise ValidationError("Please provide either 'section_id' or 'section_slug', not both.")
-    
-        # ✅ Filter by Page
+            raise ValidationError("Provide either 'section_id' or 'section_slug', not both.")
+
+        # Filter by page
         if page_id:
-            if not queryset.filter(pages__id=page_id).exists():
-                raise NotFound(detail=f"Page with id {page_id} not found.")
             queryset = queryset.filter(pages__id=page_id)
-    
         elif page_slug:
-            if not queryset.filter(pages__slug=page_slug).exists():
-                raise NotFound(detail=f"Page with slug '{page_slug}' not found.")
             queryset = queryset.filter(pages__slug=page_slug)
-    
-        # ✅ Filter by Section
+
+        # Filter by section
         if section_id:
-            if not queryset.filter(id=section_id).exists():
-                raise NotFound(detail=f"Section with id {section_id} not found.")
             queryset = queryset.filter(id=section_id)
-    
         elif section_slug:
-            if not queryset.filter(slug=section_slug).exists():
-                raise NotFound(detail=f"Section with slug '{section_slug}' not found.")
             queryset = queryset.filter(slug=section_slug)
-    
+
         return queryset
-    
-
-
 
     def patch(self, request, *args, **kwargs):
         section_id = request.query_params.get("section_id")
@@ -614,4 +643,116 @@ class SectionViewSet(BaseViewSet):
         return Response(
             {"detail": f"Section {section_id} unassigned from page {page_id}"},
             status=status.HTTP_204_NO_CONTENT,
+        )
+    
+    def destroy(self, request, *args, **kwargs):
+        """Permanently delete a Section from DB."""
+        section_id = kwargs.get("id")
+
+        try:
+            section = Section.objects.get(id=section_id)
+        except Section.DoesNotExist:
+            return Response(
+                {"success": False, "message": f"Section with id '{section_id}' not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        section.delete()
+        return Response(
+            {"success": True, "message": f"Section {section_id} deleted permanently"},
+            status=status.HTTP_200_OK,
+        )
+    
+    @action(detail=False, methods=['post'], url_path='assigned')
+    def assign_section(self, request):
+        """
+        Assign a section to a page.
+        Expects `page_id` and `section_id` in query parameters.
+        """
+        page_id = request.query_params.get("page_id")
+        section_id = request.query_params.get("section_id")
+
+        if not page_id or not section_id:
+            return Response(
+                {"success": False, "message": "Both section_id and page_id are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Fetch the page and section
+        try:
+            page = Page.objects.get(id=page_id)
+        except Page.DoesNotExist:
+            return Response(
+                {"detail": f"Page with id '{page_id}' not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            section = Section.objects.get(id=section_id)
+        except Section.DoesNotExist:
+            return Response(
+                {"detail": f"Section with id '{section_id}' not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Assign the section to the page
+        if section.pages.filter(id=page.id).exists():
+            return Response(
+                {"detail": f"Section {section_id} is already assigned to page {page_id}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        section.pages.add(page)
+
+        return Response(
+            {"detail": f"Section {section_id} successfully assigned to page {page_id}"},
+            status=status.HTTP_201_CREATED
+        )
+    
+
+    @action(detail=False, methods=['post'], url_path='unassigned')
+    def unassign_section(self, request):
+        """
+        Unassign a section from a page.
+        Expects `page_id` and `section_id` in query parameters.
+        """
+        page_id = request.query_params.get("page_id")
+        section_id = request.query_params.get("section_id")
+
+        if not page_id or not section_id:
+            return Response(
+                {"success": False, "message": "Both section_id and page_id are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Fetch the page and section
+        try:
+            page = Page.objects.get(id=page_id)
+        except Page.DoesNotExist:
+            return Response(
+                {"detail": f"Page with id '{page_id}' not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            section = Section.objects.get(id=section_id)
+        except Section.DoesNotExist:
+            return Response(
+                {"detail": f"Section with id '{section_id}' not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check if the section is already unassigned
+        if not section.pages.filter(id=page.id).exists():
+            return Response(
+                {"detail": f"Section {section_id} is not assigned to page {page_id}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Remove the relation between section and page (unassign)
+        section.pages.remove(page)
+
+        return Response(
+            {"detail": f"Section {section_id} successfully unassigned from page {page_id}"},
+            status=status.HTTP_204_NO_CONTENT
         )

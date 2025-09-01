@@ -170,16 +170,38 @@ from .models import Section
 
 
 
+# @admin.register(Section)
+# class SectionAdmin(admin.ModelAdmin):
+    
+#     list_display = (
+#         "id", "is_active", "get_pages", "order", "created_at", "updated_at"
+#     )
+#     list_filter = ("section_type", "created_at")  # removed "page" from here
+#     search_fields = ("pages__title", "section_type")  # updated for M2M lookup
+
+#     readonly_fields = ("created_at", "updated_at")
+
+#     def get_pages(self, obj):
+#         return ", ".join([p.title for p in obj.pages.all()])
+#     get_pages.short_description = "Pages"
+
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = (
-        "id", "is_active", "get_pages", "order", "created_at", "updated_at"
-    )
-    list_filter = ("section_type", "created_at")  # removed "page" from here
-    search_fields = ("pages__title", "section_type")  # updated for M2M lookup
+    list_display = ("id", "title", "get_pages", "section_type", "order", "is_active", "created_at","updated_at")
+    search_fields = ("title", "slug")
+    list_filter = ("section_type", "is_active")
+    ordering = ("order", "id")
+    list_per_page = 25
+    show_full_result_count = False
+    raw_id_fields = ("pages",)
 
-    readonly_fields = ("created_at", "updated_at")
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.defer("data").only(
+            "id", "title", "section_type", "order", "is_active", "created_at", "updated_at"
+        )
 
     def get_pages(self, obj):
-        return ", ".join([p.title for p in obj.pages.all()])
+        # Show first 3 related pages titles (adjust as you like)
+        return ", ".join(p.title for p in obj.pages.all()[:3])
     get_pages.short_description = "Pages"

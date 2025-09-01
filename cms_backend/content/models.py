@@ -92,14 +92,26 @@ class Section(BaseModel):
         verbose_name = "Section"
         verbose_name_plural = "Sections"
         ordering = ["order"]
+        indexes = [
+            models.Index(fields=["slug"]),
+            models.Index(fields=["order"]),
+            models.Index(fields=["is_active"]),
+        ]
 
-    def _str_(self):
+    def __str__(self):
         return f"{self.title} - {self.section_type} (Order {self.order})"
+
     
 
     def save(self, *args, **kwargs):
-        if not self.slug:  # auto-generate slug from title
-            self.slug = slugify(self.title)
+        if not self.slug:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            count = 1
+            while Section.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{count}"
+                count += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 

@@ -27,40 +27,65 @@ class SectionSerializer(serializers.ModelSerializer):
 
     def validate_data(self, value):
         """
-        Handle Base64 images in 'data' dict.
+        Handle Base64 images in 'data' dict, including handling the 'image' key and nested structures like 'members'.
         """
-        for key, file_data in value.items():
-            if isinstance(file_data, str) and file_data.startswith("data:image"):
-                # Convert Base64 string to InMemoryUploadedFile
-                base64_field = Base64ImageField()
-                file_obj = base64_field.to_internal_value(file_data)
-                # Save to default storage
-                file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)
-                value[key] = default_storage.url(file_path)
+        # Recursive function to handle nested structures
+        def handle_images(data):
+            if isinstance(data, list):
+                for item in data:
+                    handle_images(item)
+            elif isinstance(data, dict):
+                for key, file_data in data.items():
+                    if key == "image" and isinstance(file_data, str) and file_data.startswith("data:image"):
+                        # Convert Base64 string to InMemoryUploadedFile
+                        base64_field = Base64ImageField()
+                        file_obj = base64_field.to_internal_value(file_data)
+                        
+                        # Save to default storage
+                        file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)
+                        data[key] = default_storage.url(file_path)
+                    else:
+                        # Recursively process nested dictionaries or lists
+                        handle_images(file_data)
+    
+        # Process the 'data' dictionary
+        handle_images(value)
+    
         return value
     
-
     def to_representation(self, instance):
+        """
+        Serialize data, fixing media URLs in the 'data' field.
+        """
         rep = super().to_representation(instance)
-
+        
         request = self.context.get("request")
         data = rep.get("data", {})
-
-        # Fix media paths inside data dict
-        for key, value in data.items():
-            if isinstance(value, str) and value.startswith("/media/") and request:
-                data[key] = request.build_absolute_uri(value)
-
+    
+        # Recursive function to handle nested structures
+        def handle_media_urls(data):
+            if isinstance(data, list):
+                for item in data:
+                    handle_media_urls(item)  # Recursively handle each item in the list
+            elif isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, str) and value.startswith("/media/") and request:
+                        # Convert relative media URL to absolute URL
+                        data[key] = request.build_absolute_uri(value)
+                    else:
+                        # Recursively process nested dictionaries or lists
+                        handle_media_urls(value)
+    
+        # Handle the 'data' dictionary
+        handle_media_urls(data)
+    
         rep["data"] = data
         return rep
+
     
-    def update(self, instance, validated_data):
-        # ✅ Merge JSON instead of replacing
-        new_data = validated_data.pop("data", None)
-        if new_data is not None:
-            merged_data = {**instance.data, **new_data}
-            validated_data["data"] = merged_data
-        return super().update(instance, validated_data)
+
+
+    
 
 
 
@@ -200,51 +225,6 @@ class SectionListSerializer(serializers.Serializer):
         return {"sections": created_sections, "page": page}
 
 
-    # def create(self, validated_data):
-    #     sections_data = validated_data.pop("sections")
-    #     page_id = validated_data.get("page_id")
-    #     page_slug = validated_data.get("page_slug")
-    
-    #     page = None
-    
-    #     if page_id and page_slug:
-    #         # Both provided: check they match the same page
-    #         try:
-    #             page_by_id = Page.objects.get(id=page_id)
-    #         except Page.DoesNotExist:
-    #             raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
-            
-    #         try:
-    #             page_by_slug = Page.objects.get(slug=page_slug)
-    #         except Page.DoesNotExist:
-    #             raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
-            
-    #         if page_by_id.id != page_by_slug.id:
-    #             raise serializers.ValidationError("page_id and page_slug do not match the same page")
-            
-    #         page = page_by_id  # both match
-    
-    #     elif page_id:
-    #         try:
-    #             page = Page.objects.get(id=page_id)
-    #         except Page.DoesNotExist:
-    #             raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
-        
-    #     elif page_slug:
-    #         try:
-    #             page = Page.objects.get(slug=page_slug)
-    #         except Page.DoesNotExist:
-    #             raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
-        
-    #     else:
-    #         raise serializers.ValidationError("Either page_id or page_slug must be provided")
-    
-    #     created_sections = []
-    #     for section_data in sections_data:
-    #         section = Section.objects.create(page=page, **section_data)
-    #         created_sections.append(section)
-    
-    #     return {"sections": created_sections, "page": page}  # Include page for response
 
 # ==========================
 # CONTENT SERIALIZERS
