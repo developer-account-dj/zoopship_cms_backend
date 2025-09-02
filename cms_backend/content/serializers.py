@@ -19,11 +19,21 @@ class pageminiserailizer(serializers.ModelSerializer):
 from django.core.files.storage import default_storage
 from drf_extra_fields.fields import Base64ImageField
 class SectionSerializer(serializers.ModelSerializer):
-    pages = pageminiserailizer(read_only=True, many=True)  # show all linked pages
-    
+    pages = pageminiserailizer(read_only=True, many=True)
+
     class Meta:
         model = Section
-        fields = ["id", "slug", "is_active", "title", "section_type", "order", "data", "pages"]
+        fields = [
+            "id",
+            "slug",
+            "is_active",
+            "title",
+            "section_type",
+            "order",
+            "data",
+            "pages",
+        ]
+
 
     def validate_data(self, value):
         """
