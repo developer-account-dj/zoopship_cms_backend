@@ -82,13 +82,6 @@ class SectionSerializer(serializers.ModelSerializer):
         rep["data"] = data
         return rep
 
-    
-
-
-    
-
-
-
 class PageSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     updated_by = serializers.PrimaryKeyRelatedField(read_only=True)

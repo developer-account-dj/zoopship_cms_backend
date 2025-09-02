@@ -52,27 +52,6 @@ class Page(BaseModel):
 # -------------------------
 # Section Model
 # -------------------------
-
-class SectionType(BaseModel):
-    name = models.CharField(max_length=100, unique=True, help_text="Name of the section type (e.g. Banner, About)")
-    description = models.TextField(blank=True, null=True)
-    schema = models.JSONField(
-        default=dict,
-        help_text="(Optional) Define expected fields for this section, e.g. {title: string, image: url}"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = ("Section Type")
-        verbose_name_plural = ("Section Types")
-
-    def _str_(self):
-        return self.name
-    
-
-    
 class Section(BaseModel):
     pages = models.ManyToManyField(Page, related_name="sections", blank=True)
     data = models.JSONField(default=dict, help_text="Dynamic data for this section")
@@ -113,6 +92,27 @@ class Section(BaseModel):
                 count += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+class SectionType(BaseModel):
+    name = models.CharField(max_length=100, unique=True, help_text="Name of the section type (e.g. Banner, About)")
+    description = models.TextField(blank=True, null=True)
+    schema = models.JSONField(
+        default=dict,
+        help_text="(Optional) Define expected fields for this section, e.g. {title: string, image: url}"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = ("Section Type")
+        verbose_name_plural = ("Section Types")
+
+    def _str_(self):
+        return self.name
+    
+
+    
 
 
 # -------------------------
