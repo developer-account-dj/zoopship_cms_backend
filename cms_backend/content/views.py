@@ -554,6 +554,7 @@ class SectionViewSet(BaseViewSet):
             "previous": None,
             "data": serializer.data
         })
+    
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -561,24 +562,30 @@ class SectionViewSet(BaseViewSet):
         page_id = self.request.query_params.get("page_id")
         section_slug = self.request.query_params.get("section_slug")
         section_id = self.request.query_params.get("section_id")
-
+        section_type = self.request.query_params.get("section_type")
+    
+        # ✅ Validation: prevent conflicting filters
         if page_id and page_slug:
             raise ValidationError("Provide either 'page_id' or 'page_slug', not both.")
         if section_id and section_slug:
             raise ValidationError("Provide either 'section_id' or 'section_slug', not both.")
-
-        # Filter by page
+    
+        # ✅ Filter by page
         if page_id:
             queryset = queryset.filter(pages__id=page_id)
         elif page_slug:
             queryset = queryset.filter(pages__slug=page_slug)
-
-        # Filter by section
+    
+        # ✅ Filter by section id/slug
         if section_id:
             queryset = queryset.filter(id=section_id)
         elif section_slug:
             queryset = queryset.filter(slug=section_slug)
-
+    
+        # ✅ Filter by section_type (works with/without page filters)
+        if section_type:
+            queryset = queryset.filter(section_type=section_type)
+    
         return queryset
 
     def patch(self, request, *args, **kwargs):
