@@ -52,16 +52,25 @@ class Page(BaseModel):
 # -------------------------
 # Section Model
 # -------------------------
-class Section(BaseModel):
-    pages = models.ManyToManyField(Page, related_name="sections", blank=True)
-    data = models.JSONField(default=dict, help_text="Dynamic data for this section")
-    order = models.PositiveIntegerField(default=0, help_text="Order of section on the page")
+class PageSection(models.Model):
+    page = models.ForeignKey("Page", on_delete=models.CASCADE)
+    section = models.ForeignKey("Section", on_delete=models.CASCADE)
     is_active = models.BooleanField(default=True)
-    section_type=models.CharField(max_length=120,default="sectiontype")
 
+    class Meta:
+        unique_together = ("page", "section")
+class Section(BaseModel):
+    pages = models.ManyToManyField(
+        Page,
+        through="PageSection",   # 👈 custom through model
+        related_name="sections",
+        blank=True
+    )
+    data = models.JSONField(default=dict, help_text="Dynamic data for this section")
+    order = models.PositiveIntegerField(default=0)
+    section_type = models.CharField(max_length=120, default="sectiontype")
 
-     # ✅ New fields
-    title = models.CharField(max_length=200, help_text="Title of this specific section")
+    title = models.CharField(max_length=200)
     slug = models.SlugField(max_length=220, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)    
@@ -74,7 +83,6 @@ class Section(BaseModel):
         indexes = [
             models.Index(fields=["slug"]),
             models.Index(fields=["order"]),
-            models.Index(fields=["is_active"]),
         ]
 
     def __str__(self):

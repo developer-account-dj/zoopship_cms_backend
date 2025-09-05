@@ -115,7 +115,7 @@ WSGI_APPLICATION = 'cms_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'cms',  # Replace with your DB name
+        'NAME': 'cms_backup',  # Replace with your DB name
         'USER': 'root',
         'PASSWORD': '12345',
         'HOST': 'localhost',

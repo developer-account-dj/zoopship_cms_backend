@@ -9,7 +9,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from .models import (
     Page, FAQ, BlogPost, Banner, ContactInfo, HowItWorks,
-    Impression, Feature,  Slide, SliderBanner, Section,SectionType
+    Impression, Feature,  Slide, SliderBanner, Section,SectionType,PageSection
 )
 from .serializers import (
     PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
@@ -515,10 +515,14 @@ class SectionViewSet(BaseViewSet):
 
     # ✅ Only select required fields and prefetch pages
     queryset = Section.objects.only(
-        "id", "slug", "is_active", "title", "section_type", "order", "data"
+        "id", "slug", "title", "section_type", "order", "data"
     ).prefetch_related(
-        Prefetch('pages', queryset=Page.objects.defer("content", "parent_id", "created_at", "updated_at"))
+        Prefetch(
+            "pagesection_set",
+            queryset=PageSection.objects.select_related("page").only("page_id", "is_active")
+        )
     ).order_by("order")
+
 
     def get_serializer_class(self):
         if self.action == "create" and "sections" in self.request.data:
@@ -588,34 +592,79 @@ class SectionViewSet(BaseViewSet):
     
         return queryset
 
+    # def patch(self, request, *args, **kwargs):
+    #     section_id = request.query_params.get("section_id")
+    #     page_id = request.query_params.get("page_id")
+
+    #     if not section_id or not page_id:
+    #         return Response(
+    #             {"success": False, "message": "Both section_id and page_id are required."},
+    #             status=status.HTTP_400_BAD_REQUEST
+    #         )
+
+    #     try:
+    #         instance = Section.objects.get(id=section_id, pages__id=page_id)
+    #     except Section.DoesNotExist:
+    #         return Response(
+    #             {"success": False, "message": f"Section {section_id} not found for Page {page_id}"},
+    #             status=status.HTTP_404_NOT_FOUND
+    #         )
+
+    #     # ✅ partial=True ensures missing fields won’t be reset
+    #     serializer = self.get_serializer(instance, data=request.data, partial=True)
+    #     serializer.is_valid(raise_exception=True)
+    #     serializer.save()
+
+    #     return Response({
+    #         "success": True,
+    #         "message": f"Section {section_id} updated successfully for Page {page_id}.",
+    #         "data": serializer.data
+    #     }, status=status.HTTP_200_OK)
+
     def patch(self, request, *args, **kwargs):
         section_id = request.query_params.get("section_id")
         page_id = request.query_params.get("page_id")
-
+    
         if not section_id or not page_id:
             return Response(
                 {"success": False, "message": "Both section_id and page_id are required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+    
+        # Update global section fields
         try:
-            instance = Section.objects.get(id=section_id, pages__id=page_id)
+            section = Section.objects.get(id=section_id)
         except Section.DoesNotExist:
             return Response(
-                {"success": False, "message": f"Section {section_id} not found for Page {page_id}"},
+                {"success": False, "message": f"Section {section_id} not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-        # ✅ partial=True ensures missing fields won’t be reset
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
+    
+        section_data = request.data.copy()
+        is_active = section_data.pop("is_active", None)
+    
+        serializer = self.get_serializer(section, data=section_data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-
+    
+        # Update per-page is_active
+        try:
+            page_section = PageSection.objects.get(page_id=page_id, section_id=section_id)
+            if is_active is not None:
+                page_section.is_active = is_active
+                page_section.save()
+        except PageSection.DoesNotExist:
+            return Response(
+                {"success": False, "message": f"Section {section_id} not assigned to Page {page_id}"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
         return Response({
             "success": True,
             "message": f"Section {section_id} updated successfully for Page {page_id}.",
-            "data": serializer.data
+            "data": serializer.data | {"is_active": page_section.is_active}
         }, status=status.HTTP_200_OK)
+    
     
     def delete(self, request, *args, **kwargs):
         section_id = request.query_params.get("section_id")

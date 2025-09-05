@@ -2,7 +2,8 @@ from django.contrib import admin
 from .models import (
     Page,
     FAQ, BlogPost, Banner, SliderBanner, Slide,
-    Feature, HowItWorks, Impression, ContactInfo
+    Feature, HowItWorks, Impression, ContactInfo,
+    Section, PageSection
 )
 
 # -------------------------
@@ -23,7 +24,7 @@ class ActiveAdminMixin:
 
 
 # -------------------------
-# Page Admin
+# Page Admin (only once!)
 # -------------------------
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin, ActiveAdminMixin):
@@ -32,8 +33,6 @@ class PageAdmin(admin.ModelAdmin, ActiveAdminMixin):
     search_fields = ("title", "content", "slug")
     prepopulated_fields = {"slug": ("title",)}
     actions = ["activate_items", "deactivate_items"]
-
-
 
 
 # -------------------------
@@ -135,7 +134,6 @@ class ContactInfoAdmin(admin.ModelAdmin, ActiveAdminMixin):
     actions = ["activate_items", "deactivate_items"]
 
 
-
 # -------------------------
 # Slider Banner & Slide Admin
 # -------------------------
@@ -163,45 +161,53 @@ class SlideAdmin(admin.ModelAdmin):
     list_filter = ("slider", "created_at")
 
 
+from .models import Section, PageSection
 
 
+# -------------------------
+# Inline for Section Admin
+# -------------------------
+class PageSectionInline(admin.TabularInline):
+    """Inline editor for PageSection inside Section admin."""
+    model = PageSection
+    extra = 1
+    autocomplete_fields = ["page"]
+    fields = ["page", "is_active"]
+    show_change_link = True
 
-from .models import Section
 
-
-
-# @admin.register(Section)
-# class SectionAdmin(admin.ModelAdmin):
-    
-#     list_display = (
-#         "id", "is_active", "get_pages", "order", "created_at", "updated_at"
-#     )
-#     list_filter = ("section_type", "created_at")  # removed "page" from here
-#     search_fields = ("pages__title", "section_type")  # updated for M2M lookup
-
-#     readonly_fields = ("created_at", "updated_at")
-
-#     def get_pages(self, obj):
-#         return ", ".join([p.title for p in obj.pages.all()])
-#     get_pages.short_description = "Pages"
-
+# -------------------------
+# Section Admin
+# -------------------------
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "get_pages", "section_type", "order", "is_active", "created_at","updated_at")
-    search_fields = ("title", "slug")
-    list_filter = ("section_type", "is_active")
+    list_display = (
+        "id",
+        "title",
+        "get_pages",
+        "section_type",
+        "order",
+        "created_at",
+        "updated_at",
+    )
+    search_fields = ("id", "title", "slug")
     ordering = ("order", "id")
-    list_per_page = 25
-    show_full_result_count = False
-    raw_id_fields = ("pages",)
+    inlines = [PageSectionInline]
 
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.defer("data").only(
-            "id", "title", "section_type", "order", "is_active", "created_at", "updated_at"
-        )
-
+    # Show related pages as a comma-separated list
     def get_pages(self, obj):
-        # Show first 3 related pages titles (adjust as you like)
-        return ", ".join(p.title for p in obj.pages.all()[:3])
+        return ", ".join(obj.pages.values_list("slug", flat=True)) or "-"
     get_pages.short_description = "Pages"
+
+   
+
+
+# -------------------------
+# PageSection Admin
+# -------------------------
+@admin.register(PageSection)
+class PageSectionAdmin(admin.ModelAdmin):
+    list_display = ("id", "page", "section", "is_active")
+    list_filter = ("is_active", "page__slug", "section__section_type")
+    search_fields = ("page__title", "section__title", "section__slug")
+    ordering = ("id",)

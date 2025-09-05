@@ -2,95 +2,225 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from .models import (
-    Page, FAQ, BlogPost, Banner, HowItWorks,
+    Page, FAQ, BlogPost, Banner, HowItWorks,PageSection,
     Impression, Feature, ContactInfo, Slide, SliderBanner,Section,SectionType
 )
 User = get_user_model()
 
 
-# ==========================
-# PAGE SERIALIZER
-# ==========================
-class pageminiserailizer(serializers.ModelSerializer):
+
+class PageMiniSerializer(serializers.ModelSerializer):
+    is_active = serializers.SerializerMethodField()
+
     class Meta:
-        model=Page
-        fields = ["id","slug", "title", "is_active"]
+        model = Page
+        fields = ["id", "slug", "is_active"]
+
+    def get_is_active(self, page):
+        """Return is_active from PageSection mapping"""
+        section = self.context.get("section")
+        if not section:
+            return None
+        mapping = PageSection.objects.filter(page=page, section=section).first()
+        return mapping.is_active if mapping else None
 
 from django.core.files.storage import default_storage
 from drf_extra_fields.fields import Base64ImageField
 class SectionSerializer(serializers.ModelSerializer):
-    pages = pageminiserailizer(read_only=True, many=True)
+    pages = serializers.SerializerMethodField()
+    page_id = serializers.SerializerMethodField()
+    page_slug = serializers.SerializerMethodField()
+    is_active = serializers.SerializerMethodField()
 
     class Meta:
         model = Section
         fields = [
             "id",
             "slug",
-            "is_active",
             "title",
             "section_type",
             "order",
             "data",
-            "pages",
+            # dynamic fields
+            "pages",      # when multiple pages
+            "page_id",    # only if filtering by single page
+            "page_slug",  # only if filtering by single page
+            "is_active",  # only if filtering by single page
         ]
 
+    def get_pages(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return []
+
+        page_id = request.query_params.get("page_id")
+        page_slug = request.query_params.get("page_slug")
+
+        # ✅ If filtering by single page → don’t return pages[]
+        if page_id or page_slug:
+            return None  
+
+        # ✅ Otherwise return all related pages with is_active
+        pages = obj.pages.all()
+        data = []
+        for page in pages:
+            mapping = PageSection.objects.filter(page=page, section=obj).first()
+            data.append({
+                "id": page.id,
+                "slug": page.slug,
+                "is_active": mapping.is_active if mapping else None
+            })
+        return data
+
+    def get_page_id(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return None
+        page_id = request.query_params.get("page_id")
+        page_slug = request.query_params.get("page_slug")
+
+        if not (page_id or page_slug):
+            return None
+
+        mapping = obj.pagesection_set.select_related("page").first()
+        return mapping.page.id if mapping else None
+
+    def get_page_slug(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return None
+        page_id = request.query_params.get("page_id")
+        page_slug = request.query_params.get("page_slug")
+
+        if not (page_id or page_slug):
+            return None
+
+        mapping = obj.pagesection_set.select_related("page").first()
+        return mapping.page.slug if mapping else None
+
+    def get_is_active(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return None
+
+        page_id = request.query_params.get("page_id")
+        page_slug = request.query_params.get("page_slug")
+
+        if not (page_id or page_slug):
+            return None
+
+        qs = obj.pagesection_set.all()
+        if page_id:
+            qs = qs.filter(page__id=page_id)
+        elif page_slug:
+            qs = qs.filter(page__slug=page_slug)
+
+        mapping = qs.first()
+        return mapping.is_active if mapping else None
+
+
+    # def validate_data(self, value):
+    #     """Handle Base64 images in 'data' dict, including handling the 'image' key and nested structures like 'members'."""
+    #     def handle_images(data):
+    #         if isinstance(data, list):
+    #             for item in data:
+    #                 handle_images(item)
+    #         elif isinstance(data, dict):
+    #             for key, file_data in data.items():
+    #                 if key == "image" and isinstance(file_data, str) and file_data.startswith("data:image"):
+    #                     base64_field = Base64ImageField()
+    #                     file_obj = base64_field.to_internal_value(file_data)
+    #                     file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)
+    #                     data[key] = default_storage.url(file_path)
+    #                 else:
+    #                     handle_images(file_data)
+
+    #     handle_images(value)
+    #     return value
 
     def validate_data(self, value):
-        """
-        Handle Base64 images in 'data' dict, including handling the 'image' key and nested structures like 'members'.
-        """
-        # Recursive function to handle nested structures
+        """Handle Base64 images in 'data' dict, including handling dynamic image keys and nested structures."""
+        
         def handle_images(data):
             if isinstance(data, list):
                 for item in data:
-                    handle_images(item)
+                    handle_images(item)  # Recursively handle list items
             elif isinstance(data, dict):
                 for key, file_data in data.items():
-                    if key == "image" and isinstance(file_data, str) and file_data.startswith("data:image"):
-                        # Convert Base64 string to InMemoryUploadedFile
-                        base64_field = Base64ImageField()
-                        file_obj = base64_field.to_internal_value(file_data)
-                        
-                        # Save to default storage
-                        file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)
-                        data[key] = default_storage.url(file_path)
+                    # Check if the value is a string and starts with 'data:image' (Base64 image)
+                    if isinstance(file_data, str) and file_data.startswith("data:image"):
+                        # If it is a Base64 image, handle it
+                        base64_field = Base64ImageField()  # Assuming this class handles conversion
+                        file_obj = base64_field.to_internal_value(file_data)  # Convert Base64 to file object
+                        file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)  # Save the file
+                        data[key] = default_storage.url(file_path)  # Replace with the URL to the file
                     else:
-                        # Recursively process nested dictionaries or lists
+                        # Otherwise, recursively handle nested structures (sub-fields)
                         handle_images(file_data)
     
-        # Process the 'data' dictionary
         handle_images(value)
-    
         return value
-    
+
+
     def to_representation(self, instance):
-        """
-        Serialize data, fixing media URLs in the 'data' field.
-        """
+        """Serialize data, fixing media URLs in 'data' and cleaning fields based on request filters."""
         rep = super().to_representation(instance)
-        
         request = self.context.get("request")
+    
+        # ✅ Fix media URLs inside `data`
         data = rep.get("data", {})
     
-        # Recursive function to handle nested structures
         def handle_media_urls(data):
             if isinstance(data, list):
                 for item in data:
-                    handle_media_urls(item)  # Recursively handle each item in the list
+                    handle_media_urls(item)
             elif isinstance(data, dict):
                 for key, value in data.items():
                     if isinstance(value, str) and value.startswith("/media/") and request:
-                        # Convert relative media URL to absolute URL
                         data[key] = request.build_absolute_uri(value)
                     else:
-                        # Recursively process nested dictionaries or lists
                         handle_media_urls(value)
     
-        # Handle the 'data' dictionary
         handle_media_urls(data)
-    
         rep["data"] = data
+    
+        # ✅ Clean up depending on query params
+        if request:
+            page_id = request.query_params.get("page_id")
+            page_slug = request.query_params.get("page_slug")
+    
+            if page_id or page_slug:
+                # single page → remove pages[]
+                rep.pop("pages", None)
+            else:
+                # multiple pages → remove flat fields
+                rep.pop("page_id", None)
+                rep.pop("page_slug", None)
+                rep.pop("section_is_active", None)
+        
+        # Conditionally remove 'is_active' if its value is None
+        if rep.get("is_active") is None:
+            rep.pop("is_active")
+    
         return rep
+
+
+
+# ==========================
+# THROUGH MODEL SERIALIZER
+# ==========================
+class PageSectionSerializer(serializers.ModelSerializer):
+    section = SectionSerializer(read_only=True)   # nested section details
+    section_id = serializers.PrimaryKeyRelatedField(
+        queryset=Section.objects.all(),
+        source="section",
+        write_only=True
+    )
+
+    class Meta:
+        model = PageSection
+        fields = ["section_id", "section",]
+
 
 class PageSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -99,14 +229,8 @@ class PageSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
     parent_title = serializers.CharField(source="parent.title", read_only=True)
 
-    # 🔁 ManyToMany field now
-    sections = serializers.PrimaryKeyRelatedField(
-        queryset=Section.objects.all(),
-        many=True,
-        write_only=True,
-        required=False
-    )
-    section_details = SectionSerializer(source="sections", many=True, read_only=True)
+    # 🔁 Instead of raw section IDs, we handle through model
+    sections = PageSectionSerializer(source="pagesection_set", many=True, required=False)
 
     class Meta:
         model = Page
@@ -116,13 +240,12 @@ class PageSerializer(serializers.ModelSerializer):
             "title",
             "slug",
             "content",
-            "is_active",
+            "is_active",      # page’s own active status
             "order",
             "parent_id",
             "parent_title",
             "children",
-            "sections",         # accepts list of IDs
-            "section_details",  # returns nested section info
+            "sections",       # now includes section_is_active per-page
             "created_at",
             "updated_at",
             "created_by",
@@ -141,19 +264,27 @@ class PageSerializer(serializers.ModelSerializer):
         return PageSerializer(children, many=True, context=self.context).data
 
     def create(self, validated_data):
-        section_objs = validated_data.pop("sections", [])
+        sections_data = validated_data.pop("pagesection_set", [])
         page = super().create(validated_data)
-
-        if section_objs:
-            page.sections.set(section_objs)  # ✅ correct way for M2M
+        for sec in sections_data:
+            PageSection.objects.create(
+                page=page,
+                section=sec["section"],
+                is_active=sec.get("is_active", True),
+            )
         return page
 
     def update(self, instance, validated_data):
-        section_objs = validated_data.pop("sections", None)
+        sections_data = validated_data.pop("pagesection_set", None)
         page = super().update(instance, validated_data)
-
-        if section_objs is not None:
-            page.sections.set(section_objs)  # ✅ reset to given sections
+        if sections_data is not None:
+            PageSection.objects.filter(page=page).delete()
+            for sec in sections_data:
+                PageSection.objects.create(
+                    page=page,
+                    section=sec["section"],
+                    is_active=sec.get("is_active", True),
+                )
         return page
 
 # ==========================
