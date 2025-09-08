@@ -6,8 +6,8 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 import random
 User = get_user_model()
-
-
+from django.db import transaction
+from django.db.models import F
 # -------------------------
 # Page Model
 # -------------------------
@@ -107,8 +107,30 @@ class Section(BaseModel):
                 slug = f"{base_slug}-{count}"
                 count += 1
             self.slug = slug
-        super().save(*args, **kwargs)
-
+    
+        # 🔄 Handle ordering dynamically
+        with transaction.atomic():
+            if self.pk:
+                # Existing section, updating order
+                old_order = Section.objects.filter(pk=self.pk).values_list('order', flat=True).first()
+                if old_order != self.order:
+                    if old_order < self.order:
+                        # Moving down → shift others up
+                        Section.objects.filter(
+                            order__gt=old_order,
+                            order__lte=self.order
+                        ).exclude(pk=self.pk).update(order=F('order') - 1)
+                    else:
+                        # Moving up → shift others down
+                        Section.objects.filter(
+                            order__lt=old_order,
+                            order__gte=self.order
+                        ).exclude(pk=self.pk).update(order=F('order') + 1)
+            else:
+                # New section → push others down
+                Section.objects.filter(order__gte=self.order).update(order=F('order') + 1)
+    
+            super().save(*args, **kwargs)
 class SectionType(BaseModel):
     name = models.CharField(max_length=100, unique=True, help_text="Name of the section type (e.g. Banner, About)")
     description = models.TextField(blank=True, null=True)

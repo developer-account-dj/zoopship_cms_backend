@@ -619,35 +619,6 @@ class SectionViewSet(BaseViewSet):
     
         return queryset
 
-    # def patch(self, request, *args, **kwargs):
-    #     section_id = request.query_params.get("section_id")
-    #     page_id = request.query_params.get("page_id")
-
-    #     if not section_id or not page_id:
-    #         return Response(
-    #             {"success": False, "message": "Both section_id and page_id are required."},
-    #             status=status.HTTP_400_BAD_REQUEST
-    #         )
-
-    #     try:
-    #         instance = Section.objects.get(id=section_id, pages__id=page_id)
-    #     except Section.DoesNotExist:
-    #         return Response(
-    #             {"success": False, "message": f"Section {section_id} not found for Page {page_id}"},
-    #             status=status.HTTP_404_NOT_FOUND
-    #         )
-
-    #     # ✅ partial=True ensures missing fields won’t be reset
-    #     serializer = self.get_serializer(instance, data=request.data, partial=True)
-    #     serializer.is_valid(raise_exception=True)
-    #     serializer.save()
-
-    #     return Response({
-    #         "success": True,
-    #         "message": f"Section {section_id} updated successfully for Page {page_id}.",
-    #         "data": serializer.data
-    #     }, status=status.HTTP_200_OK)
-
     def patch(self, request, *args, **kwargs):
         section_id = request.query_params.get("section_id")
         page_id = request.query_params.get("page_id")
