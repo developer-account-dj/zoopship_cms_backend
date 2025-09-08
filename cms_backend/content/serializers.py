@@ -23,9 +23,11 @@ class PageMiniSerializer(serializers.ModelSerializer):
             return None
         mapping = PageSection.objects.filter(page=page, section=section).first()
         return mapping.is_active if mapping else None
-
+import base64
 from django.core.files.storage import default_storage
 from drf_extra_fields.fields import Base64ImageField
+import re
+from django.core.files.base import ContentFile
 class SectionSerializer(serializers.ModelSerializer):
     pages = serializers.SerializerMethodField()
     page_id = serializers.SerializerMethodField()
@@ -119,48 +121,66 @@ class SectionSerializer(serializers.ModelSerializer):
         return mapping.is_active if mapping else None
 
 
+    
+
     # def validate_data(self, value):
-    #     """Handle Base64 images in 'data' dict, including handling the 'image' key and nested structures like 'members'."""
+    #     """Handle Base64 images in 'data' dict, including handling dynamic image keys and nested structures."""
+        
     #     def handle_images(data):
     #         if isinstance(data, list):
     #             for item in data:
-    #                 handle_images(item)
+    #                 handle_images(item)  # Recursively handle list items
     #         elif isinstance(data, dict):
     #             for key, file_data in data.items():
-    #                 if key == "image" and isinstance(file_data, str) and file_data.startswith("data:image"):
-    #                     base64_field = Base64ImageField()
-    #                     file_obj = base64_field.to_internal_value(file_data)
-    #                     file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)
-    #                     data[key] = default_storage.url(file_path)
+    #                 # Check if the value is a string and starts with 'data:image' (Base64 image)
+    #                 if isinstance(file_data, str) and file_data.startswith("data:image"):
+    #                     # If it is a Base64 image, handle it
+    #                     base64_field = Base64ImageField()  # Assuming this class handles conversion
+    #                     file_obj = base64_field.to_internal_value(file_data)  # Convert Base64 to file object
+    #                     file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)  # Save the file
+    #                     data[key] = default_storage.url(file_path)  # Replace with the URL to the file
     #                 else:
+    #                     # Otherwise, recursively handle nested structures (sub-fields)
     #                     handle_images(file_data)
-
+    
     #     handle_images(value)
     #     return value
 
     def validate_data(self, value):
         """Handle Base64 images in 'data' dict, including handling dynamic image keys and nested structures."""
-        
+    
         def handle_images(data):
             if isinstance(data, list):
                 for item in data:
                     handle_images(item)  # Recursively handle list items
             elif isinstance(data, dict):
                 for key, file_data in data.items():
-                    # Check if the value is a string and starts with 'data:image' (Base64 image)
                     if isinstance(file_data, str) and file_data.startswith("data:image"):
-                        # If it is a Base64 image, handle it
-                        base64_field = Base64ImageField()  # Assuming this class handles conversion
-                        file_obj = base64_field.to_internal_value(file_data)  # Convert Base64 to file object
-                        file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)  # Save the file
-                        data[key] = default_storage.url(file_path)  # Replace with the URL to the file
+                        # Detect MIME type
+                        match = re.match(r"^data:(image/[\w\+\-\.]+);base64,", file_data)
+                        if not match:
+                            continue
+    
+                        mime_type = match.group(1)
+    
+                        if mime_type == "image/svg+xml":
+                            # Handle SVG manually (store as raw XML)
+                            format, imgstr = file_data.split(";base64,", 1)
+                            ext = "svg"
+                            file = ContentFile(base64.b64decode(imgstr), name=f"{key}.{ext}")
+                            file_path = default_storage.save(f"sections/{file.name}", file)
+                            data[key] = default_storage.url(file_path)
+                        else:
+                            # Handle raster images (JPG, PNG, GIF, HEIC, etc.)
+                            base64_field = Base64ImageField()
+                            file_obj = base64_field.to_internal_value(file_data)
+                            file_path = default_storage.save(f"sections/{file_obj.name}", file_obj)
+                            data[key] = default_storage.url(file_path)
                     else:
-                        # Otherwise, recursively handle nested structures (sub-fields)
                         handle_images(file_data)
     
         handle_images(value)
         return value
-
 
     def to_representation(self, instance):
         """Serialize data, fixing media URLs in 'data' and cleaning fields based on request filters."""
@@ -232,6 +252,12 @@ class PageSerializer(serializers.ModelSerializer):
     # 🔁 Instead of raw section IDs, we handle through model
     sections = PageSectionSerializer(source="pagesection_set", many=True, required=False)
 
+    # Accept list of page types
+    page_type = serializers.ListField(
+        child=serializers.CharField(max_length=120),
+        allow_empty=True
+    )
+
     class Meta:
         model = Page
         fields = [
@@ -244,6 +270,7 @@ class PageSerializer(serializers.ModelSerializer):
             "order",
             "parent_id",
             "parent_title",
+            "page_type",
             "children",
             "sections",       # now includes section_is_active per-page
             "created_at",

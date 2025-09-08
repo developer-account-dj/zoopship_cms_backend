@@ -68,6 +68,10 @@ REST_FRAMEWORK = {
     ],
 }
 
+from pillow_heif import register_heif_opener
+register_heif_opener()
+
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # must be high
     'django.middleware.security.SecurityMiddleware',

@@ -105,6 +105,25 @@ class BaseViewSet(viewsets.ModelViewSet):
 # ==========================
 # PAGE VIEWSET
 # ==========================
+# class PageViewSet(BaseViewSet):
+#     queryset = Page.objects.all()
+#     serializer_class = PageSerializer
+#     lookup_field = "id"
+#     lookup_url_kwarg = "slug"
+
+#     def get_queryset(self):
+#         queryset = Page.objects.all()
+
+#         if self.action == "retrieve":
+#             # ✅ Only active when retrieving a single page
+#             return queryset.filter(is_active=True).order_by("created_at")
+
+#         if self.action == "list":
+#             # ✅ return root-level pages (children nested) → all, active + inactive
+#             return queryset.filter(parent_id__isnull=True).order_by("created_at")
+
+#         return queryset.order_by("created_at")
+
 class PageViewSet(BaseViewSet):
     queryset = Page.objects.all()
     serializer_class = PageSerializer
@@ -114,12 +133,20 @@ class PageViewSet(BaseViewSet):
     def get_queryset(self):
         queryset = Page.objects.all()
 
+        # Filter by page_type (optional)
+        page_types = self.request.query_params.getlist("page_type")
+        if page_types:
+            # MySQL JSONField contains check
+            from django.db.models import Q
+            q = Q()
+            for pt in page_types:
+                q |= Q(page_type__icontains=pt)
+            queryset = queryset.filter(q)
+
         if self.action == "retrieve":
-            # ✅ Only active when retrieving a single page
             return queryset.filter(is_active=True).order_by("created_at")
 
         if self.action == "list":
-            # ✅ return root-level pages (children nested) → all, active + inactive
             return queryset.filter(parent_id__isnull=True).order_by("created_at")
 
         return queryset.order_by("created_at")

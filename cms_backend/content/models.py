@@ -18,6 +18,7 @@ class Page(BaseModel):
     slug = models.SlugField(unique=True, blank=True)
     content = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    page_type = models.JSONField(default=list, blank=True)
 
     # navigation fields
     parent_id = models.ForeignKey(
@@ -36,8 +37,13 @@ class Page(BaseModel):
     def __str__(self):
         return f"{self.id} - {self.title}"
 
+
     def save(self, *args, **kwargs):
-        if not self.slug:
+        # Special case: Home page slug should always be "/"
+        if self.title.lower() == "home":
+            self.slug = "/"
+        elif not self.slug or self.slug.strip() == "":
+            # Auto-generate slug for all other pages
             base_slug = slugify(self.title or self.name)
             slug = base_slug
             count = 1
@@ -45,7 +51,9 @@ class Page(BaseModel):
                 slug = f"{base_slug}-{count}"
                 count += 1
             self.slug = slug
+    
         super().save(*args, **kwargs)
+
 
 
 

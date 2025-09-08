@@ -28,7 +28,7 @@ class ActiveAdminMixin:
 # -------------------------
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin, ActiveAdminMixin):
-    list_display = ("id", "title", "slug", "parent_id", "order", "is_active", "created_at", "updated_at")
+    list_display = ("id", "title", "page_type","slug", "parent_id", "order", "is_active", "created_at", "updated_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("title", "content", "slug")
     prepopulated_fields = {"slug": ("title",)}
@@ -196,7 +196,7 @@ class SectionAdmin(admin.ModelAdmin):
 
     # Show related pages as a comma-separated list
     def get_pages(self, obj):
-        return ", ".join(obj.pages.values_list("slug", flat=True)) or "-"
+        return ", ".join(obj.pages.values_list("name", flat=True)) or "-"
     get_pages.short_description = "Pages"
 
    
