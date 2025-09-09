@@ -338,7 +338,7 @@ class NavigationSerializer(serializers.ModelSerializer):
 class SectionListSerializer(serializers.Serializer):
     # page_id = serializers.IntegerField(required=False, write_only=True)
     page_id = serializers.CharField(required=False, write_only=True)
-    page_slug = serializers.SlugField(required=False, write_only=True)
+    page_slug = serializers.CharField(required=False, write_only=True)
     sections = SectionSerializer(many=True)
 
     def create(self, validated_data):

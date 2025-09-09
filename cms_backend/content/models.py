@@ -7,7 +7,7 @@ from django.contrib.contenttypes.models import ContentType
 import random
 User = get_user_model()
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F,Max
 # -------------------------
 # Page Model
 # -------------------------
@@ -75,7 +75,7 @@ class Section(BaseModel):
         blank=True
     )
     data = models.JSONField(default=dict, help_text="Dynamic data for this section")
-    order = models.PositiveIntegerField(default=0)
+    order = models.PositiveIntegerField(default=1)
     section_type = models.CharField(max_length=120, default="sectiontype")
 
     title = models.CharField(max_length=200)
@@ -115,20 +115,23 @@ class Section(BaseModel):
                 old_order = Section.objects.filter(pk=self.pk).values_list('order', flat=True).first()
                 if old_order != self.order:
                     if old_order < self.order:
-                        # Moving down → shift others up
                         Section.objects.filter(
                             order__gt=old_order,
                             order__lte=self.order
                         ).exclude(pk=self.pk).update(order=F('order') - 1)
                     else:
-                        # Moving up → shift others down
                         Section.objects.filter(
                             order__lt=old_order,
                             order__gte=self.order
                         ).exclude(pk=self.pk).update(order=F('order') + 1)
             else:
-                # New section → push others down
-                Section.objects.filter(order__gte=self.order).update(order=F('order') + 1)
+                # New section → if order is not set, append to end (start from 1)
+                if not self.order:
+                    max_order = Section.objects.aggregate(max_order=Max("order"))["max_order"] or 0
+                    self.order = max_order + 1
+                else:
+                    # Insert section at specific order, shift others
+                    Section.objects.filter(order__gte=self.order).update(order=F('order') + 1)
     
             super().save(*args, **kwargs)
 class SectionType(BaseModel):
