@@ -157,8 +157,9 @@ LANGUAGE_CODE = 'en-us'
 
 
 TIME_ZONE = 'Asia/Kolkata'
-USE_TZ = True
-USE_I18N = True
+USE_I18N = True     # keep it, safe and default
+USE_L10N = True     # formats dates/numbers properly
+USE_TZ = False      # important → stops Django from shifting IST to UTC
 
 
 

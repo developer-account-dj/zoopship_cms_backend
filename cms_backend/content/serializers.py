@@ -6,8 +6,8 @@ from .models import (
     Impression, Feature, ContactInfo, Slide, SliderBanner,Section,SectionType
 )
 User = get_user_model()
-
-
+from django.db.models import F,Max
+from django.db import transaction
 
 class PageMiniSerializer(serializers.ModelSerializer):
     is_active = serializers.SerializerMethodField()
@@ -33,6 +33,7 @@ class SectionSerializer(serializers.ModelSerializer):
     page_id = serializers.SerializerMethodField()
     page_slug = serializers.SerializerMethodField()
     is_active = serializers.SerializerMethodField()
+    order = serializers.SerializerMethodField()  # per-page order
 
     class Meta:
         model = Section
@@ -41,13 +42,13 @@ class SectionSerializer(serializers.ModelSerializer):
             "slug",
             "title",
             "section_type",
-            "order",
             "data",
             # dynamic fields
             "pages",      # when multiple pages
             "page_id",    # only if filtering by single page
             "page_slug",  # only if filtering by single page
             "is_active",  # only if filtering by single page
+            "order",      # per-page order
         ]
 
     def get_pages(self, obj):
@@ -70,7 +71,8 @@ class SectionSerializer(serializers.ModelSerializer):
             data.append({
                 "id": page.id,
                 "slug": page.slug,
-                "is_active": mapping.is_active if mapping else None
+                "is_active": mapping.is_active if mapping else None,
+                "order": mapping.order if mapping else None
             })
         return data
 
@@ -80,26 +82,37 @@ class SectionSerializer(serializers.ModelSerializer):
             return None
         page_id = request.query_params.get("page_id")
         page_slug = request.query_params.get("page_slug")
-
+    
         if not (page_id or page_slug):
             return None
-
-        mapping = obj.pagesection_set.select_related("page").first()
+    
+        qs = obj.pagesection_set.all()
+        if page_id:
+            qs = qs.filter(page__id=page_id)
+        elif page_slug:
+            qs = qs.filter(page__slug=page_slug)
+    
+        mapping = qs.first()
         return mapping.page.id if mapping else None
-
+    
     def get_page_slug(self, obj):
         request = self.context.get("request")
         if not request:
             return None
         page_id = request.query_params.get("page_id")
         page_slug = request.query_params.get("page_slug")
-
+    
         if not (page_id or page_slug):
             return None
-
-        mapping = obj.pagesection_set.select_related("page").first()
+    
+        qs = obj.pagesection_set.all()
+        if page_id:
+            qs = qs.filter(page__id=page_id)
+        elif page_slug:
+            qs = qs.filter(page__slug=page_slug)
+    
+        mapping = qs.first()
         return mapping.page.slug if mapping else None
-
     def get_is_active(self, obj):
         request = self.context.get("request")
         if not request:
@@ -119,32 +132,25 @@ class SectionSerializer(serializers.ModelSerializer):
 
         mapping = qs.first()
         return mapping.is_active if mapping else None
-
-
     
+    def get_order(self, obj):
+        """Return per-page order from PageSection"""
+        request = self.context.get("request")
+        if not request:
+            return None
+        page_id = request.query_params.get("page_id")
+        page_slug = request.query_params.get("page_slug")
+        if not (page_id or page_slug):
+            return None
 
-    # def validate_data(self, value):
-    #     """Handle Base64 images in 'data' dict, including handling dynamic image keys and nested structures."""
-        
-    #     def handle_images(data):
-    #         if isinstance(data, list):
-    #             for item in data:
-    #                 handle_images(item)  # Recursively handle list items
-    #         elif isinstance(data, dict):
-    #             for key, file_data in data.items():
-    #                 # Check if the value is a string and starts with 'data:image' (Base64 image)
-    #                 if isinstance(file_data, str) and file_data.startswith("data:image"):
-    #                     # If it is a Base64 image, handle it
-    #                     base64_field = Base64ImageField()  # Assuming this class handles conversion
-    #                     file_obj = base64_field.to_internal_value(file_data)  # Convert Base64 to file object
-    #                     file_path = default_storage.save(f'sections/{file_obj.name}', file_obj)  # Save the file
-    #                     data[key] = default_storage.url(file_path)  # Replace with the URL to the file
-    #                 else:
-    #                     # Otherwise, recursively handle nested structures (sub-fields)
-    #                     handle_images(file_data)
-    
-    #     handle_images(value)
-    #     return value
+        qs = obj.pagesection_set.all()
+        if page_id:
+            qs = qs.filter(page__id=page_id)
+        elif page_slug:
+            qs = qs.filter(page__slug=page_slug)
+
+        mapping = qs.first()
+        return mapping.order if mapping else None
 
     def validate_data(self, value):
         """Handle Base64 images in 'data' dict, including handling dynamic image keys and nested structures."""
@@ -230,7 +236,7 @@ class SectionSerializer(serializers.ModelSerializer):
 # THROUGH MODEL SERIALIZER
 # ==========================
 class PageSectionSerializer(serializers.ModelSerializer):
-    section = SectionSerializer(read_only=True)   # nested section details
+    section = SectionSerializer(read_only=True)
     section_id = serializers.PrimaryKeyRelatedField(
         queryset=Section.objects.all(),
         source="section",
@@ -239,7 +245,53 @@ class PageSectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PageSection
-        fields = ["section_id", "section",]
+        fields = ["section_id", "section", "is_active", "order"]
+
+class PageSectionSerializer(serializers.ModelSerializer):
+    section = SectionSerializer(read_only=True)
+    section_id = serializers.PrimaryKeyRelatedField(
+        queryset=Section.objects.all(),
+        source="section",
+        write_only=True
+    )
+
+    class Meta:
+        model = PageSection
+        fields = ["section_id", "section", "is_active", "order"]
+
+    def update(self, instance, validated_data):
+        """
+        PATCH update with automatic reordering.
+        """
+        new_order = validated_data.get("order", None)
+        is_active = validated_data.get("is_active", instance.is_active)
+
+        with transaction.atomic():
+            if new_order is not None and new_order != instance.order:
+                old_order = instance.order or 0
+
+                if old_order < new_order:
+                    # moving down → shift others up
+                    PageSection.objects.filter(
+                        page=instance.page,
+                        order__gt=old_order,
+                        order__lte=new_order
+                    ).exclude(pk=instance.pk).update(order=F("order") - 1)
+                else:
+                    # moving up → shift others down
+                    PageSection.objects.filter(
+                        page=instance.page,
+                        order__lt=old_order,
+                        order__gte=new_order
+                    ).exclude(pk=instance.pk).update(order=F("order") + 1)
+
+                instance.order = new_order
+
+            # update other fields
+            instance.is_active = is_active
+            instance.save(update_fields=["order", "is_active"] if new_order is not None else ["is_active"])
+
+        return instance
 
 
 class PageSerializer(serializers.ModelSerializer):
@@ -255,7 +307,9 @@ class PageSerializer(serializers.ModelSerializer):
     # Accept list of page types
     page_type = serializers.ListField(
         child=serializers.CharField(max_length=120),
-        allow_empty=True
+        allow_empty=True,
+        required=False ,
+        allow_null=True    # 👈 this is the missing piece
     )
 
     class Meta:
@@ -333,59 +387,68 @@ class NavigationSerializer(serializers.ModelSerializer):
 
 
 
-
-
 class SectionListSerializer(serializers.Serializer):
-    # page_id = serializers.IntegerField(required=False, write_only=True)
-    page_id = serializers.CharField(required=False, write_only=True)
-    page_slug = serializers.CharField(required=False, write_only=True)
     sections = SectionSerializer(many=True)
+    page_id = serializers.CharField(required=False)
+    page_slug = serializers.CharField(required=False)
 
     def create(self, validated_data):
-        sections_data = validated_data.pop("sections")
+        sections_data = validated_data.pop("sections", [])
         page_id = validated_data.get("page_id")
         page_slug = validated_data.get("page_slug")
 
-        # 🔎 Resolve page
+        # 🔹 find target page
         page = None
-        if page_id and page_slug:
-            try:
-                page_by_id = Page.objects.get(id=page_id)
-            except Page.DoesNotExist:
-                raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
-
-            try:
-                page_by_slug = Page.objects.get(slug=page_slug)
-            except Page.DoesNotExist:
-                raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
-
-            if page_by_id.id != page_by_slug.id:
-                raise serializers.ValidationError("page_id and page_slug do not match the same page")
-
-            page = page_by_id
-        elif page_id:
-            try:
-                page = Page.objects.get(id=page_id)
-            except Page.DoesNotExist:
-                raise serializers.ValidationError({"page_id": f"Page with id '{page_id}' does not exist"})
+        if page_id:
+            page = Page.objects.filter(id=page_id).first()
         elif page_slug:
-            try:
-                page = Page.objects.get(slug=page_slug)
-            except Page.DoesNotExist:
-                raise serializers.ValidationError({"page_slug": f"Page with slug '{page_slug}' does not exist"})
-        else:
-            raise serializers.ValidationError("Either page_id or page_slug must be provided")
+            page = Page.objects.filter(slug=page_slug).first()
 
-        # ✅ Create sections and assign page via M2M
         created_sections = []
+        mappings = []
+
         for section_data in sections_data:
-            section = Section.objects.create(**section_data)  # 👈 don't pass page
-            section.pages.add(page)  # 👈 assign page properly
+            # extract extra fields
+            is_active = section_data.pop("is_active", True)
+            order = section_data.pop("order", None)
+
+            # create section
+            section = Section.objects.create(**section_data)
+
+            mapping = None
+            if page:
+                with transaction.atomic():
+                    # if no order → assign next available
+                    if order is None:
+                        max_order = PageSection.objects.filter(page=page).aggregate(
+                            max_order=Max("order")
+                        )["max_order"] or 0
+                        order = max_order + 1
+                    else:
+                        # shift all >= order down by 1 to avoid duplicates
+                        PageSection.objects.filter(page=page, order__gte=order).update(order=F("order") + 1)
+
+                    mapping = PageSection.objects.create(
+                        page=page,
+                        section=section,
+                        is_active=is_active,
+                        order=order
+                    )
+
+                    # normalize orders sequentially
+                    sections_on_page = PageSection.objects.filter(page=page).order_by("order")
+                    for idx, ps in enumerate(sections_on_page, start=1):
+                        if ps.order != idx:
+                            PageSection.objects.filter(pk=ps.pk).update(order=idx)
+
             created_sections.append(section)
+            mappings.append(mapping)
 
-        return {"sections": created_sections, "page": page}
-
-
+        return {
+            "sections": created_sections,
+            "page": page,
+            "mappings": mappings,
+        }
 
 # ==========================
 # CONTENT SERIALIZERS
@@ -466,3 +529,58 @@ class SliderBannerSerializer(serializers.ModelSerializer):
                     Slide.objects.create(slider=instance, **slide_data)
         return instance
 
+
+
+
+
+class SectionOrderSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source="section.id")
+    slug = serializers.CharField(source="section.slug")
+    title = serializers.CharField(source="section.title")
+    section_type = serializers.CharField(source="section.section_type")
+
+    page_id = serializers.CharField(source="page.id")
+    page_slug = serializers.CharField(source="page.slug")
+    is_active = serializers.BooleanField()
+    order = serializers.IntegerField()
+
+    class Meta:
+        model = PageSection
+        fields = [
+            "id",
+            "slug",
+            "title",
+            "section_type",
+            "page_id",
+            "page_slug",
+            "is_active",
+            "order",
+        ]
+    def get_mapping(self, obj):
+        """Helper to get PageSection mapping"""
+        request = self.context.get("request")
+        page_id = request.query_params.get("page_id") if request else None
+        page_slug = request.query_params.get("page_slug") if request else None
+
+        qs = obj.pagesection_set.all()
+        if page_id:
+            qs = qs.filter(page__id=page_id)
+        elif page_slug:
+            qs = qs.filter(page__slug=page_slug)
+        return qs.first()
+
+    def get_page_id(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.page.id if mapping else None
+
+    def get_page_slug(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.page.slug if mapping else None
+
+    def get_is_active(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.is_active if mapping else None
+
+    def get_order(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.order if mapping else None

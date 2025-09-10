@@ -24,8 +24,9 @@ router.register(r'slider-banners', SliderBannerViewSet, basename='sliderbanner')
 # router.register(r'section-types', SectionTypeViewSet, basename='section-type')
 router.register(r'sections',SectionViewSet, basename='section')
 
-
+from .views import SectionOrderListAPIView
 urlpatterns = [
     path('', include(router.urls)),
+    path('section/order/', SectionOrderListAPIView.as_view(), name='section-order-list'),
     
 ]

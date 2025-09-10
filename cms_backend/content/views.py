@@ -6,7 +6,7 @@ from rest_framework.exceptions import NotFound
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.contrib.contenttypes.models import ContentType
-
+from django.db.models import F,Max
 from .models import (
     Page, FAQ, BlogPost, Banner, ContactInfo, HowItWorks,
     Impression, Feature,  Slide, SliderBanner, Section,SectionType,PageSection
@@ -105,50 +105,40 @@ class BaseViewSet(viewsets.ModelViewSet):
 # ==========================
 # PAGE VIEWSET
 # ==========================
-# class PageViewSet(BaseViewSet):
-#     queryset = Page.objects.all()
-#     serializer_class = PageSerializer
-#     lookup_field = "id"
-#     lookup_url_kwarg = "slug"
 
-#     def get_queryset(self):
-#         queryset = Page.objects.all()
-
-#         if self.action == "retrieve":
-#             # ✅ Only active when retrieving a single page
-#             return queryset.filter(is_active=True).order_by("created_at")
-
-#         if self.action == "list":
-#             # ✅ return root-level pages (children nested) → all, active + inactive
-#             return queryset.filter(parent_id__isnull=True).order_by("created_at")
-
-#         return queryset.order_by("created_at")
 
 class PageViewSet(BaseViewSet):
     queryset = Page.objects.all()
     serializer_class = PageSerializer
     lookup_field = "id"
     lookup_url_kwarg = "slug"
+    
 
     def get_queryset(self):
         queryset = Page.objects.all()
-
+    
         # Filter by page_type (optional)
         page_types = self.request.query_params.getlist("page_type")
         if page_types:
-            # MySQL JSONField contains check
             from django.db.models import Q
             q = Q()
-            for pt in page_types:
+    
+            # If "?page_type=" is passed (empty string), check for NULL values
+            if "" in page_types:
+                q |= Q(page_type__isnull=True)
+    
+            # Otherwise check for matches inside JSON field
+            for pt in filter(None, page_types):  # filter out empty string
                 q |= Q(page_type__icontains=pt)
+    
             queryset = queryset.filter(q)
-
+    
         if self.action == "retrieve":
             return queryset.filter(is_active=True).order_by("created_at")
-
+    
         if self.action == "list":
             return queryset.filter(parent_id__isnull=True).order_by("created_at")
-
+    
         return queryset.order_by("created_at")
 
     def get_object(self):
@@ -538,17 +528,17 @@ class SectionViewSet(BaseViewSet):
     serializer_class = SectionSerializer
     lookup_field = "id"
     parser_classes = [parsers.JSONParser]
-    pagination_class = SectionPagination
+    # pagination_class = SectionPagination
 
     # ✅ Only select required fields and prefetch pages
     queryset = Section.objects.only(
-        "id", "slug", "title", "section_type", "order", "data"
+        "id", "slug", "title", "section_type", "data"
     ).prefetch_related(
         Prefetch(
             "pagesection_set",
-            queryset=PageSection.objects.select_related("page").only("page_id", "is_active")
+            queryset=PageSection.objects.select_related("page").only("page_id", "is_active", "order")
         )
-    ).order_by("order")
+    )
 
 
     def get_serializer_class(self):
@@ -561,10 +551,21 @@ class SectionViewSet(BaseViewSet):
         serializer.is_valid(raise_exception=True)
         result = serializer.save()
         return Response({
-            "success": True,
-            "message": "Sections created successfully",
-            "data": SectionSerializer(result['sections'], many=True, context={'request': request}).data
-        }, status=status.HTTP_201_CREATED)
+        "success": True,
+        "message": "Sections created successfully",
+        "data": [
+            {
+                **SectionSerializer(sec, context={"request": request}).data,
+                "pages": [{
+                    "id": result["page"].id,
+                    "slug": result["page"].slug,
+                    "is_active": mapping.is_active,
+                    "order": mapping.order,
+                }]
+            }
+            for sec, mapping in zip(result["sections"], result["mappings"])
+        ]
+    }, status=status.HTTP_201_CREATED)
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -585,8 +586,8 @@ class SectionViewSet(BaseViewSet):
             "previous": None,
             "data": serializer.data
         })
-    
 
+    
     def get_queryset(self):
         queryset = super().get_queryset()
         page_slug = self.request.query_params.get("page_slug")
@@ -595,25 +596,27 @@ class SectionViewSet(BaseViewSet):
         section_id = self.request.query_params.get("section_id")
         section_type = self.request.query_params.get("section_type")
     
-        # ✅ Validation: prevent conflicting filters
+        # Validation
         if page_id and page_slug:
             raise ValidationError("Provide either 'page_id' or 'page_slug', not both.")
         if section_id and section_slug:
             raise ValidationError("Provide either 'section_id' or 'section_slug', not both.")
     
-        # ✅ Filter by page
+        # Filter by page
         if page_id:
             queryset = queryset.filter(pages__id=page_id)
+            queryset = queryset.annotate(page_order=F('pagesection__order')).order_by('page_order')
         elif page_slug:
             queryset = queryset.filter(pages__slug=page_slug)
+            queryset = queryset.annotate(page_order=F('pagesection__order')).order_by('page_order')
     
-        # ✅ Filter by section id/slug
+        # Filter by section id/slug
         if section_id:
             queryset = queryset.filter(id=section_id)
         elif section_slug:
             queryset = queryset.filter(slug=section_slug)
     
-        # ✅ Filter by section_type (works with/without page filters)
+        # Filter by section_type
         if section_type:
             queryset = queryset.filter(section_type=section_type)
     
@@ -640,6 +643,7 @@ class SectionViewSet(BaseViewSet):
     
         section_data = request.data.copy()
         is_active = section_data.pop("is_active", None)
+        order = section_data.pop("order", None)
     
         serializer = self.get_serializer(section, data=section_data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -648,19 +652,25 @@ class SectionViewSet(BaseViewSet):
         # Update per-page is_active
         try:
             page_section = PageSection.objects.get(page_id=page_id, section_id=section_id)
+            updated = False
             if is_active is not None:
                 page_section.is_active = is_active
+                updated = True
+            if order is not None:
+                page_section.order = order
+                updated = True
+            if updated:
                 page_section.save()
         except PageSection.DoesNotExist:
             return Response(
                 {"success": False, "message": f"Section {section_id} not assigned to Page {page_id}"},
                 status=status.HTTP_404_NOT_FOUND
             )
-    
+
         return Response({
             "success": True,
             "message": f"Section {section_id} updated successfully for Page {page_id}.",
-            "data": serializer.data | {"is_active": page_section.is_active}
+            "data": serializer.data | {"is_active": page_section.is_active, "order": page_section.order}
         }, status=status.HTTP_200_OK)
     
     
@@ -717,21 +727,22 @@ class SectionViewSet(BaseViewSet):
             status=status.HTTP_200_OK,
         )
     
+
     @action(detail=False, methods=['post'], url_path='assigned')
     def assign_section(self, request):
         """
-        Assign a section to a page.
+        Assign a section to a page with automatic ordering.
         Expects `page_id` and `section_id` in query parameters.
         """
         page_id = request.query_params.get("page_id")
         section_id = request.query_params.get("section_id")
-
+    
         if not page_id or not section_id:
             return Response(
                 {"success": False, "message": "Both section_id and page_id are required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+    
         # Fetch the page and section
         try:
             page = Page.objects.get(id=page_id)
@@ -740,7 +751,7 @@ class SectionViewSet(BaseViewSet):
                 {"detail": f"Page with id '{page_id}' not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
+    
         try:
             section = Section.objects.get(id=section_id)
         except Section.DoesNotExist:
@@ -748,37 +759,49 @@ class SectionViewSet(BaseViewSet):
                 {"detail": f"Section with id '{section_id}' not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        # Assign the section to the page
+    
+        # Check if already assigned
         if section.pages.filter(id=page.id).exists():
             return Response(
                 {"detail": f"Section {section_id} is already assigned to page {page_id}."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        section.pages.add(page)
-
+    
+        # ✅ Determine next order for this page
+        max_order = PageSection.objects.filter(page=page).aggregate(
+            max_order=Max("order")
+        )["max_order"] or 0
+        next_order = max_order + 1
+    
+        # Assign section to page with proper order
+        PageSection.objects.create(
+            page=page,
+            section=section,
+            order=next_order,
+            is_active=True
+        )
+    
         return Response(
-            {"detail": f"Section {section_id} successfully assigned to page {page_id}"},
+            {"success": True,
+             "message": f"Section {section_id} successfully assigned to page {page_id} with order {next_order}"},
             status=status.HTTP_201_CREATED
         )
     
-
     @action(detail=False, methods=['post'], url_path='unassigned')
     def unassign_section(self, request):
         """
-        Unassign a section from a page.
+        Unassign a section from a page and normalize orders.
         Expects `page_id` and `section_id` in query parameters.
         """
         page_id = request.query_params.get("page_id")
         section_id = request.query_params.get("section_id")
-
+    
         if not page_id or not section_id:
             return Response(
                 {"success": False, "message": "Both section_id and page_id are required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+    
         # Fetch the page and section
         try:
             page = Page.objects.get(id=page_id)
@@ -787,7 +810,7 @@ class SectionViewSet(BaseViewSet):
                 {"detail": f"Page with id '{page_id}' not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
+    
         try:
             section = Section.objects.get(id=section_id)
         except Section.DoesNotExist:
@@ -795,18 +818,56 @@ class SectionViewSet(BaseViewSet):
                 {"detail": f"Section with id '{section_id}' not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
+    
         # Check if the section is already unassigned
         if not section.pages.filter(id=page.id).exists():
             return Response(
                 {"detail": f"Section {section_id} is not assigned to page {page_id}."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+    
+        # Get the PageSection object for order
+        page_section = PageSection.objects.get(page=page, section=section)
+        removed_order = page_section.order
+    
         # Remove the relation between section and page (unassign)
         section.pages.remove(page)
-
+        page_section.delete()  # remove PageSection entry
+    
+        # Normalize remaining orders on that page
+        PageSection.objects.filter(page=page, order__gt=removed_order).update(order=F('order') - 1)
+    
         return Response(
-            {"detail": f"Section {section_id} successfully unassigned from page {page_id}"},
+            {"detail": f"Section {section_id} successfully unassigned from page {page_id} and orders normalized."},
             status=status.HTTP_204_NO_CONTENT
         )
+    
+
+    
+    
+
+
+from .serializers import SectionOrderSerializer
+from rest_framework.views import APIView
+class SectionOrderListAPIView(APIView):
+    def get(self, request):
+        page_id = request.query_params.get("page_id")
+        page_slug = request.query_params.get("page_slug")
+
+        # Fetch directly from PageSection so duplicates are preserved
+        qs = PageSection.objects.select_related("page", "section")
+
+        if page_id:
+            qs = qs.filter(page__id=page_id)
+        elif page_slug:
+            qs = qs.filter(page__slug=page_slug)
+
+        qs = qs.order_by("order")
+
+        serializer = SectionOrderSerializer(qs, many=True, context={"request": request})
+        return Response({
+            "success": True,
+            "message": "Section order list fetched",
+            "count": qs.count(),
+            "data": serializer.data
+        })

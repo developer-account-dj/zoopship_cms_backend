@@ -186,12 +186,12 @@ class SectionAdmin(admin.ModelAdmin):
         "title",
         "get_pages",
         "section_type",
-        "order",
+        # "order",
         "created_at",
         "updated_at",
     )
     search_fields = ("id", "title", "slug")
-    ordering = ("order", "id")
+    # ordering = ("order", "id")
     inlines = [PageSectionInline]
 
     # Show related pages as a comma-separated list
@@ -207,7 +207,7 @@ class SectionAdmin(admin.ModelAdmin):
 # -------------------------
 @admin.register(PageSection)
 class PageSectionAdmin(admin.ModelAdmin):
-    list_display = ("id", "page", "section", "is_active")
+    list_display = ("id", "page", "section", "is_active","order")
     list_filter = ("is_active", "page__slug", "section__section_type")
     search_fields = ("page__title", "section__title", "section__slug")
     ordering = ("id",)

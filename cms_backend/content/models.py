@@ -18,7 +18,7 @@ class Page(BaseModel):
     slug = models.SlugField(unique=True, blank=True)
     content = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
-    page_type = models.JSONField(default=list, blank=True)
+    page_type = models.JSONField(default=list, blank=True,null=True)
 
     # navigation fields
     parent_id = models.ForeignKey(
@@ -64,9 +64,53 @@ class PageSection(models.Model):
     page = models.ForeignKey("Page", on_delete=models.CASCADE)
     section = models.ForeignKey("Section", on_delete=models.CASCADE)
     is_active = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(null=True, blank=True)   # 👈 allow null for auto-assign
 
     class Meta:
         unique_together = ("page", "section")
+        ordering = ["order"]
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            # CREATE
+            if not self.pk:
+                if self.order is None:
+                    # assign next available
+                    max_order = PageSection.objects.filter(page=self.page).aggregate(
+                        max_order=Max("order")
+                    )["max_order"] or 0
+                    self.order = max_order + 1
+                else:
+                    # shift all >= new order down
+                    PageSection.objects.filter(page=self.page, order__gte=self.order).update(order=F("order") + 1)
+
+            # UPDATE
+            else:
+                old_order = PageSection.objects.filter(pk=self.pk).values_list("order", flat=True).first()
+                if old_order != self.order:
+                    # shift other sections
+                    if old_order < self.order:
+                        PageSection.objects.filter(
+                            page=self.page,
+                            order__gt=old_order,
+                            order__lte=self.order
+                        ).exclude(pk=self.pk).update(order=F("order") - 1)
+                    else:
+                        PageSection.objects.filter(
+                            page=self.page,
+                            order__lt=old_order,
+                            order__gte=self.order
+                        ).exclude(pk=self.pk).update(order=F("order") + 1)
+
+            super().save(*args, **kwargs)
+
+            # normalize all orders to be sequential
+            sections = PageSection.objects.filter(page=self.page).order_by("order")
+            for idx, ps in enumerate(sections, start=1):
+                if ps.order != idx:
+                    PageSection.objects.filter(pk=ps.pk).update(order=idx)
+
+
 class Section(BaseModel):
     pages = models.ManyToManyField(
         Page,
@@ -75,7 +119,7 @@ class Section(BaseModel):
         blank=True
     )
     data = models.JSONField(default=dict, help_text="Dynamic data for this section")
-    order = models.PositiveIntegerField(default=1)
+
     section_type = models.CharField(max_length=120, default="sectiontype")
 
     title = models.CharField(max_length=200)
@@ -87,19 +131,16 @@ class Section(BaseModel):
     class Meta:
         verbose_name = "Section"
         verbose_name_plural = "Sections"
-        ordering = ["order"]
         indexes = [
             models.Index(fields=["slug"]),
-            models.Index(fields=["order"]),
         ]
 
     def __str__(self):
-        return f"{self.title} - {self.section_type} (Order {self.order})"
-
+        return f"{self.title} - {self.section_type}"
     
-
     def save(self, *args, **kwargs):
-        if not self.slug:
+        # Generate slug from title if empty
+        if not self.slug or self.slug.strip() == "":
             base_slug = slugify(self.title)
             slug = base_slug
             count = 1
@@ -107,33 +148,9 @@ class Section(BaseModel):
                 slug = f"{base_slug}-{count}"
                 count += 1
             self.slug = slug
-    
-        # 🔄 Handle ordering dynamically
-        with transaction.atomic():
-            if self.pk:
-                # Existing section, updating order
-                old_order = Section.objects.filter(pk=self.pk).values_list('order', flat=True).first()
-                if old_order != self.order:
-                    if old_order < self.order:
-                        Section.objects.filter(
-                            order__gt=old_order,
-                            order__lte=self.order
-                        ).exclude(pk=self.pk).update(order=F('order') - 1)
-                    else:
-                        Section.objects.filter(
-                            order__lt=old_order,
-                            order__gte=self.order
-                        ).exclude(pk=self.pk).update(order=F('order') + 1)
-            else:
-                # New section → if order is not set, append to end (start from 1)
-                if not self.order:
-                    max_order = Section.objects.aggregate(max_order=Max("order"))["max_order"] or 0
-                    self.order = max_order + 1
-                else:
-                    # Insert section at specific order, shift others
-                    Section.objects.filter(order__gte=self.order).update(order=F('order') + 1)
-    
-            super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
+
+
 class SectionType(BaseModel):
     name = models.CharField(max_length=100, unique=True, help_text="Name of the section type (e.g. Banner, About)")
     description = models.TextField(blank=True, null=True)
