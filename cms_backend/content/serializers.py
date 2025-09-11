@@ -9,20 +9,6 @@ User = get_user_model()
 from django.db.models import F,Max
 from django.db import transaction
 
-class PageMiniSerializer(serializers.ModelSerializer):
-    is_active = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Page
-        fields = ["id", "slug", "is_active"]
-
-    def get_is_active(self, page):
-        """Return is_active from PageSection mapping"""
-        section = self.context.get("section")
-        if not section:
-            return None
-        mapping = PageSection.objects.filter(page=page, section=section).first()
-        return mapping.is_active if mapping else None
 import base64
 from django.core.files.storage import default_storage
 from drf_extra_fields.fields import Base64ImageField
@@ -493,85 +479,18 @@ class SectionOrderSerializer(serializers.ModelSerializer):
     
 
 
-# ==========================
-# CONTENT SERIALIZERS
-# ==========================
-class FAQSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FAQ
-        fields = "__all__"
-
-class BlogPostSerializer(serializers.ModelSerializer):
-    slug = serializers.SlugField(required=False, allow_blank=True)
+class PageMiniSerializer(serializers.ModelSerializer):
+    is_active = serializers.SerializerMethodField()
 
     class Meta:
-        model = BlogPost
-        fields = "__all__"
+        model = Page
+        fields = ["id", "slug", "is_active"]
 
-class BannerSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Banner
-        fields = "__all__"
-
-class HowItWorksSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = HowItWorks
-        fields = "__all__"
-
-class ImpressionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Impression
-        fields = "__all__"
-
-class FeatureSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Feature
-        fields = "__all__"
-
-class ContactInfoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ContactInfo
-        fields = ['id', 'contact_type', 'label', 'value', 'icon', 'order', 'is_active', 'created_at']
-        read_only_fields = ['id', 'created_at']
-
-class SlideSerializer(serializers.ModelSerializer):
-    image = serializers.ImageField(use_url=True)
-
-    class Meta:
-        model = Slide
-        fields = ["id", "heading", "description", "image"]
-
-class SliderBannerSerializer(serializers.ModelSerializer):
-    slides = SlideSerializer(many=True, required=False)
-
-    class Meta:
-        model = SliderBanner
-        fields = ["id", "title", "slug", "is_active", "slides"]
-
-    def create(self, validated_data):
-        slides_data = validated_data.pop("slides", [])
-        slider = SliderBanner.objects.create(**validated_data)
-        for slide_data in slides_data:
-            Slide.objects.create(slider=slider, **slide_data)
-        return slider
-
-    def update(self, instance, validated_data):
-        slides_data = validated_data.pop("slides", None)
-        instance.title = validated_data.get("title", instance.title)
-        instance.is_active = validated_data.get("is_active", instance.is_active)
-        instance.save()
-
-        if slides_data is not None:
-            for slide_data in slides_data:
-                if "id" in slide_data:
-                    slide = Slide.objects.get(id=slide_data["id"], slider=instance)
-                    for attr, value in slide_data.items():
-                        setattr(slide, attr, value)
-                    slide.save()
-                else:
-                    Slide.objects.create(slider=instance, **slide_data)
-        return instance
-
-
-
+    def get_is_active(self, page):
+        """Return is_active from PageSection mapping"""
+        section = self.context.get("section")
+        if not section:
+            return None
+        mapping = PageSection.objects.filter(page=page, section=section).first()
+        return mapping.is_active if mapping else None
 
