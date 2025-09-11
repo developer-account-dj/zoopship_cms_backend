@@ -2,6 +2,18 @@ from django.db import models
 from django.conf import settings
 import random
 import string
+from django.contrib.auth.models import AbstractUser
+
+class User(AbstractUser):
+    ROLE_CHOICES = (
+        ("superadmin", "Super Admin"),
+        ("seo", "SEO"),
+    )
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+
+    def __str__(self):
+        return f"{self.username} ({self.role})"
+    
 
 class BaseModel(models.Model):
     created_by = models.ForeignKey(

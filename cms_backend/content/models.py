@@ -151,6 +151,14 @@ class Section(BaseModel):
         super().save(*args, **kwargs)
 
 
+
+    
+
+
+# -------------------------
+# Extra Data Models
+# -------------------------
+
 class SectionType(BaseModel):
     name = models.CharField(max_length=100, unique=True, help_text="Name of the section type (e.g. Banner, About)")
     description = models.TextField(blank=True, null=True)
@@ -169,14 +177,6 @@ class SectionType(BaseModel):
     def _str_(self):
         return self.name
     
-
-    
-
-
-# -------------------------
-# Section Data Models
-# -------------------------
-
 class FAQ(BaseModel):
     question = models.CharField(max_length=500, unique=True)
     answer = models.TextField()

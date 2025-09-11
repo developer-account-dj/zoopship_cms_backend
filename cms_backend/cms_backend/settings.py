@@ -40,9 +40,10 @@ INSTALLED_APPS = [
 
     # 3rd party
     'rest_framework',
+    'rest_framework.authtoken',  # 👈 required for Token Auth
     'rest_framework_simplejwt',
     "corsheaders",
-    # 'rest_framework_simplejwt.token_blacklist',
+    
 
     # your apps
     'core',
@@ -59,14 +60,15 @@ SIMPLE_JWT = {
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-        # later you can add JWT or Token auth here
+        'rest_framework.authentication.TokenAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+        'rest_framework.permissions.IsAuthenticated',
     ],
 }
+
+AUTH_USER_MODEL = "core.User"
+
 
 from pillow_heif import register_heif_opener
 register_heif_opener()

@@ -235,17 +235,6 @@ class SectionSerializer(serializers.ModelSerializer):
 # ==========================
 # THROUGH MODEL SERIALIZER
 # ==========================
-class PageSectionSerializer(serializers.ModelSerializer):
-    section = SectionSerializer(read_only=True)
-    section_id = serializers.PrimaryKeyRelatedField(
-        queryset=Section.objects.all(),
-        source="section",
-        write_only=True
-    )
-
-    class Meta:
-        model = PageSection
-        fields = ["section_id", "section", "is_active", "order"]
 
 class PageSectionSerializer(serializers.ModelSerializer):
     section = SectionSerializer(read_only=True)
@@ -341,7 +330,7 @@ class PageSerializer(serializers.ModelSerializer):
         ]
 
     def get_children(self, obj):
-        children = obj.children.all().order_by("order")
+        children = obj.children.all().order_by("created_at")
         return PageSerializer(children, many=True, context=self.context).data
 
     def create(self, validated_data):
@@ -450,6 +439,60 @@ class SectionListSerializer(serializers.Serializer):
             "mappings": mappings,
         }
 
+class SectionOrderSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source="section.id")
+    slug = serializers.CharField(source="section.slug")
+    title = serializers.CharField(source="section.title")
+    section_type = serializers.CharField(source="section.section_type")
+
+    page_id = serializers.CharField(source="page.id")
+    page_slug = serializers.CharField(source="page.slug")
+    is_active = serializers.BooleanField()
+    order = serializers.IntegerField()
+
+    class Meta:
+        model = PageSection
+        fields = [
+            "id",
+            "slug",
+            "title",
+            "section_type",
+            "page_id",
+            "page_slug",
+            "is_active",
+            "order",
+        ]
+    def get_mapping(self, obj):
+        """Helper to get PageSection mapping"""
+        request = self.context.get("request")
+        page_id = request.query_params.get("page_id") if request else None
+        page_slug = request.query_params.get("page_slug") if request else None
+
+        qs = obj.pagesection_set.all()
+        if page_id:
+            qs = qs.filter(page__id=page_id)
+        elif page_slug:
+            qs = qs.filter(page__slug=page_slug)
+        return qs.first()
+
+    def get_page_id(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.page.id if mapping else None
+
+    def get_page_slug(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.page.slug if mapping else None
+
+    def get_is_active(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.is_active if mapping else None
+
+    def get_order(self, obj):
+        mapping = self.get_mapping(obj)
+        return mapping.order if mapping else None
+    
+
+
 # ==========================
 # CONTENT SERIALIZERS
 # ==========================
@@ -532,55 +575,3 @@ class SliderBannerSerializer(serializers.ModelSerializer):
 
 
 
-
-class SectionOrderSerializer(serializers.ModelSerializer):
-    id = serializers.CharField(source="section.id")
-    slug = serializers.CharField(source="section.slug")
-    title = serializers.CharField(source="section.title")
-    section_type = serializers.CharField(source="section.section_type")
-
-    page_id = serializers.CharField(source="page.id")
-    page_slug = serializers.CharField(source="page.slug")
-    is_active = serializers.BooleanField()
-    order = serializers.IntegerField()
-
-    class Meta:
-        model = PageSection
-        fields = [
-            "id",
-            "slug",
-            "title",
-            "section_type",
-            "page_id",
-            "page_slug",
-            "is_active",
-            "order",
-        ]
-    def get_mapping(self, obj):
-        """Helper to get PageSection mapping"""
-        request = self.context.get("request")
-        page_id = request.query_params.get("page_id") if request else None
-        page_slug = request.query_params.get("page_slug") if request else None
-
-        qs = obj.pagesection_set.all()
-        if page_id:
-            qs = qs.filter(page__id=page_id)
-        elif page_slug:
-            qs = qs.filter(page__slug=page_slug)
-        return qs.first()
-
-    def get_page_id(self, obj):
-        mapping = self.get_mapping(obj)
-        return mapping.page.id if mapping else None
-
-    def get_page_slug(self, obj):
-        mapping = self.get_mapping(obj)
-        return mapping.page.slug if mapping else None
-
-    def get_is_active(self, obj):
-        mapping = self.get_mapping(obj)
-        return mapping.is_active if mapping else None
-
-    def get_order(self, obj):
-        mapping = self.get_mapping(obj)
-        return mapping.order if mapping else None

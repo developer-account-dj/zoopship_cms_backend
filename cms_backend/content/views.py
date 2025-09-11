@@ -8,16 +8,14 @@ from django.db.models import Q
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import F,Max
 from .models import (
-    Page, FAQ, BlogPost, Banner, ContactInfo, HowItWorks,
-    Impression, Feature,  Slide, SliderBanner, Section,SectionType,PageSection
+    Page, Section,PageSection
 )
 from .serializers import (
-    PageSerializer, FAQSerializer, BlogPostSerializer, BannerSerializer,
-    NavigationSerializer, ContactInfoSerializer, HowItWorksSerializer,
-    ImpressionSerializer, FeatureSerializer,
-    SliderBannerSerializer, SlideSerializer, SectionSerializer
+    PageSerializer, NavigationSerializer,SectionSerializer
 )
 from core.utils.response_helpers import success_response, error_response
+from core.permissions import IsSuperAdmin, IsSEOReadOnly
+from rest_framework.permissions import IsAuthenticated
 # ==========================
 # BASEVIEWSET VIEWSET
 # ==========================
@@ -30,13 +28,13 @@ class BaseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(
-            created_by=self.request.user if self.request.user.is_authenticated else None,
-            updated_by=self.request.user if self.request.user.is_authenticated else None,
+            created_by=self.request.user,
+            updated_by=self.request.user,
         )
 
     def perform_update(self, serializer):
         serializer.save(
-            updated_by=self.request.user if self.request.user.is_authenticated else None
+            updated_by=self.request.user,
         )
 
     # CREATE (POST)
@@ -98,9 +96,9 @@ class BaseViewSet(viewsets.ModelViewSet):
         self.get_object().delete()
         return success_response(message=f"{self.basename.title()} deleted successfully")
 
-    # 🔓 All endpoints are public
+ 
     def get_permissions(self):
-        return [AllowAny()]
+        return [IsAuthenticated(), IsSuperAdmin()]
 
 # ==========================
 # PAGE VIEWSET
@@ -112,6 +110,9 @@ class PageViewSet(BaseViewSet):
     serializer_class = PageSerializer
     lookup_field = "id"
     lookup_url_kwarg = "slug"
+
+    def get_permissions(self):
+        return [IsAuthenticated(), (IsSuperAdmin() or IsSEOReadOnly())]
     
 
     def get_queryset(self):
@@ -196,309 +197,6 @@ class PageViewSet(BaseViewSet):
             },
             status=status.HTTP_200_OK
         )
-    
-
-
-
-# ==========================
-# FAQ VIEWSET
-# ==========================
-class FAQViewSet(BaseViewSet):
-    queryset = FAQ.objects.all().order_by("order")
-    serializer_class = FAQSerializer
-
-    def get_queryset(self):
-        if self.action == "list":
-            return FAQ.objects.filter(is_active=True).order_by("-created_at")
-        return super().get_queryset()
-
-
-# ==========================
-# BLOGPOST VIEWSET
-# ==========================
-class BlogPostViewSet(BaseViewSet):
-    queryset = BlogPost.objects.all().order_by("-created_at")
-    serializer_class = BlogPostSerializer
-
-    def get_queryset(self):
-        if self.action == "list":
-            return BlogPost.objects.filter(is_active=True).order_by("-created_at")
-        return super().get_queryset()
-
-
-# ==========================
-# BANNER VIEWSET
-# ==========================
-class BannerViewSet(BaseViewSet):
-    queryset = Banner.objects.all()
-    serializer_class = BannerSerializer
-
-    def get_queryset(self):
-        # For list endpoint → return ALL banners (active & inactive)
-        if self.action == "list":
-            return Banner.objects.all().order_by("created_at")
-        return super().get_queryset()
-
-    def get_object(self):
-        """
-        - Retrieve by `slug` (only active banners)
-        - Update/Delete by `id`
-        """
-        if self.action == "retrieve":
-            slug = self.kwargs.get("pk")  # DRF uses "pk" in URL conf
-            try:
-                obj = Banner.objects.get(slug=slug, is_active=True)
-            except Banner.DoesNotExist:
-                raise NotFound(detail="No active banner found with this slug.")
-            return obj
-
-        # For update/delete → fallback to default (id lookup)
-        return super().get_object()
-
-# ==========================
-# CONTACT INFO VIEWSET
-# ==========================
-class ContactInfoViewSet(BaseViewSet):
-    queryset = ContactInfo.objects.all()
-    serializer_class = ContactInfoSerializer
-
-    def get_queryset(self):
-        if self.action == "list":
-            return ContactInfo.objects.filter(is_active=True).order_by("-created_at")
-        return super().get_queryset()
-
-
-# ==========================
-# HOW IT WORKS VIEWSET
-# ==========================
-class HowItWorksViewSet(BaseViewSet):
-    queryset = HowItWorks.objects.all()
-    serializer_class = HowItWorksSerializer
-
-    def get_queryset(self):
-        if self.action == "list":
-            return HowItWorks.objects.filter(is_active=True).order_by("-created_at")
-        return super().get_queryset()
-
-
-# ==========================
-# IMPRESSION VIEWSET
-# ==========================
-class ImpressionViewSet(BaseViewSet):
-    queryset = Impression.objects.all()
-    serializer_class = ImpressionSerializer
-
-    def get_queryset(self):
-        if self.action == "list":
-            return Impression.objects.filter(is_active=True).order_by("-created_at")
-        return super().get_queryset()
-
-
-# ==========================
-# FEATURE VIEWSET
-# ==========================
-class FeatureViewSet(BaseViewSet):
-    queryset = Feature.objects.all()
-    serializer_class = FeatureSerializer
-
-    def get_queryset(self):
-        if self.action == "list":
-            return Feature.objects.filter(is_active=True).order_by("-created_at")
-        return super().get_queryset()
-
-
-class SliderBannerViewSet(BaseViewSet):
-    queryset = SliderBanner.objects.all().order_by("created_at")
-    serializer_class = SliderBannerSerializer
-    lookup_field = "pk"  # default → use "pk" (can be slug or id)
-
-    def get_object(self):
-        lookup_value = self.kwargs.get("pk")
-
-        # 🔹 Try slug lookup first (only active banners)
-        try:
-            return SliderBanner.objects.get(slug=lookup_value, is_active=True)
-        except SliderBanner.DoesNotExist:
-            pass
-
-        # 🔹 Fallback to ID lookup
-        try:
-            return SliderBanner.objects.get(pk=lookup_value)
-        except (SliderBanner.DoesNotExist, ValueError):
-            raise NotFound("Slider banner not found.")
-        
-    # 🔹 explicit slug-based retrieve endpoint
-    @action(detail=False, methods=["get"], url_path="by-slug/(?P<slug>[^/.]+)")
-    def retrieve_by_slug(self, request, slug=None):
-        try:
-            slider = SliderBanner.objects.get(slug=slug, is_active=True)
-        except SliderBanner.DoesNotExist:
-            raise NotFound("No active slider banner found with this slug.")
-
-        return success_response(
-            data=SliderBannerSerializer(slider).data,
-            message="Slider banner retrieved successfully",
-        )
-    
-
-       # 🚫 Prevent delete if slides exist
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-
-        # Check if any slides are attached
-        if instance.slides.exists():
-            return error_response(
-                message="Cannot delete slider banner because slides exist. Delete slides first.",
-                http_status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # If no slides → allow delete
-        self.perform_destroy(instance)
-        return success_response(
-            message="Slider banner deleted successfully",
-            http_status=status.HTTP_200_OK,
-        )
-
-
-    # 🔹 Create slider with nested slides (form-data)
-    def create(self, request, *args, **kwargs):
-        data = request.data.copy()
-
-        slides_data = []
-        index = 0
-        while f"slides[{index}][heading]" in data:
-            slides_data.append({
-                "heading": data.get(f"slides[{index}][heading]"),
-                "description": data.get(f"slides[{index}][description]"),
-                "image": request.FILES.get(f"slides[{index}][image]"),
-            })
-            index += 1
-
-        slider_serializer = SliderBannerSerializer(data={
-            "title": data.get("title"),
-            "is_active": data.get("is_active", True),
-        })
-
-        if slider_serializer.is_valid():
-            slider = slider_serializer.save()
-            for slide in slides_data:
-                Slide.objects.create(slider=slider, **slide)
-            return success_response(
-                data=SliderBannerSerializer(slider).data,
-                message="Slider banner created successfully",
-                http_status=status.HTTP_201_CREATED,
-            )
-        return error_response(
-            message="Validation failed",
-            data=slider_serializer.errors,
-            http_status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # 🔹 Update slider with nested slides (form-data)
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        data = request.data.copy()
-
-        # Collect incoming slides by order
-        slides_data = []
-        index = 0
-        while (
-            f"slides[{index}][heading]" in data
-            or f"slides[{index}][description]" in data
-            or f"slides[{index}][image]" in request.FILES
-        ):
-            slides_data.append({
-                "heading": data.get(f"slides[{index}][heading]"),
-                "description": data.get(f"slides[{index}][description]"),
-                "image": request.FILES.get(f"slides[{index}][image]"),
-            })
-            index += 1
-
-        # Update banner fields
-        slider_serializer = SliderBannerSerializer(
-            instance,
-            data={"title": data.get("title"), "is_active": data.get("is_active", instance.is_active)},
-            partial=partial
-        )
-
-        if slider_serializer.is_valid():
-            slider = slider_serializer.save()
-
-            existing_slides = list(slider.slides.all().order_by("created_at"))
-
-            # Update or create slides based on order
-            for i, slide_data in enumerate(slides_data):
-                if i < len(existing_slides):  # update existing
-                    slide = existing_slides[i]
-                    for attr, value in slide_data.items():
-                        if value is not None:
-                            setattr(slide, attr, value)
-                    slide.save()
-                else:  # create new slide
-                    Slide.objects.create(slider=slider, **{k: v for k, v in slide_data.items() if v})
-
-            return success_response(
-                data=SliderBannerSerializer(slider).data,
-                message="Slider banner updated successfully",
-            )
-
-        return error_response(
-            message="Validation failed",
-            data=slider_serializer.errors,
-            http_status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # ✅ Add slide
-    @action(detail=True, methods=["post"], url_path="slides")
-    def add_slide(self, request, slug=None):
-        slider = self.get_object()
-        serializer = SlideSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(slider=slider)
-            return success_response(
-                data=serializer.data,
-                message="Slide added successfully",
-                http_status=status.HTTP_201_CREATED,
-            )
-        return error_response(
-            message="Validation failed",
-            data=serializer.errors,
-            http_status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # ✅ Update slide
-    @action(detail=True, methods=["patch"], url_path="slides/(?P<slide_id>[^/.]+)")
-    def update_slide(self, request, slug=None, slide_id=None):
-        try:
-            slide = Slide.objects.get(pk=slide_id, slider__slug=slug)
-        except Slide.DoesNotExist:
-            raise NotFound("Slide not found")
-
-        serializer = SlideSerializer(slide, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return success_response(
-                data=serializer.data,
-                message="Slide updated successfully",
-            )
-        return error_response(
-            message="Validation failed",
-            data=serializer.errors,
-            http_status=status.HTTP_400_BAD_REQUEST,
-        )
-    
-
-    # ✅ Delete slide
-    @action(detail=True, methods=["delete"], url_path="slides/(?P<slide_id>[^/.]+)")
-    def delete_slide(self, request, pk=None, slide_id=None):   # 👈 pk, not slug
-        try:
-            slide = Slide.objects.get(pk=slide_id, slider__pk=pk)
-        except Slide.DoesNotExist:
-            raise NotFound("Slide not found")
-        slide.delete()
-        return success_response(message="Slide deleted successfully")
-
     
 # ==========================
 # Section ViewSet
