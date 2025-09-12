@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Page,Section, PageSection
+    Page,Section, PageSection,MetaPixelCode
 )
 
 # -------------------------
@@ -25,7 +25,7 @@ class ActiveAdminMixin:
 # -------------------------
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin, ActiveAdminMixin):
-    list_display = ("id", "title", "page_type","slug", "parent_id", "order", "is_active", "created_at", "updated_at")
+    list_display = ("id", "title", "page_type","slug","name","parent_id","is_active", "created_at", "updated_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("title", "content", "slug")
     prepopulated_fields = {"slug": ("title",)}
@@ -84,3 +84,12 @@ class PageSectionAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "page__slug", "section__section_type")
     search_fields = ("page__title", "section__title", "section__slug")
     ordering = ("id",)
+
+
+
+@admin.register(MetaPixelCode)
+class MetaPixelCodeAdmin(admin.ModelAdmin):
+    list_display = ("id",'page', 'add_title_meta')
+    search_fields = ('page__title', 'add_title_meta', 'google_pixel_code', 'facebook_pixel_code')
+    list_filter = ('page',)
+    ordering = ('page',)

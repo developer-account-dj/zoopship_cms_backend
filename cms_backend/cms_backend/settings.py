@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'content',
 ]
 
+AUTH_USER_MODEL = "core.User"
 from datetime import timedelta
 
 SIMPLE_JWT = {
@@ -67,7 +68,6 @@ REST_FRAMEWORK = {
     ],
 }
 
-AUTH_USER_MODEL = "core.User"
 
 
 from pillow_heif import register_heif_opener

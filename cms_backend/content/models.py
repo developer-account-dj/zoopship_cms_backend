@@ -152,7 +152,20 @@ class Section(BaseModel):
 
 
 
-    
+class MetaPixelCode(BaseModel):
+    page = models.ForeignKey(
+        Page,
+        related_name="meta_pixels",
+        on_delete=models.CASCADE
+    )
+    add_title_meta = models.TextField(blank=True, null=True)
+    google_pixel_code = models.TextField(blank=True, null=True)
+    facebook_pixel_code = models.TextField(blank=True, null=True)
+    other_pixel_code = models.TextField(blank=True, null=True)
+    custom_pixel_code = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"MetaPixel for Page: {self.page.title}"
 
 
 # -------------------------

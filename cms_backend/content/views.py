@@ -8,14 +8,14 @@ from django.db.models import Q
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import F,Max
 from .models import (
-    Page, Section,PageSection
+    Page, Section,PageSection,MetaPixelCode
 )
 from .serializers import (
-    PageSerializer, NavigationSerializer,SectionSerializer
+    PageSerializer, NavigationSerializer,SectionSerializer,MetaPixelCodeSerializer
 )
 from core.utils.response_helpers import success_response, error_response
-from core.permissions import IsSuperAdmin, IsSEOReadOnly
-from rest_framework.permissions import IsAuthenticated
+from core.permissions import IsSuperAdmin, IsSEOFullOnMetaPixel,IsSEOReadOnlyOnPage
+from rest_framework.permissions import AllowAny, IsAuthenticated,SAFE_METHODS
 # ==========================
 # BASEVIEWSET VIEWSET
 # ==========================
@@ -96,8 +96,31 @@ class BaseViewSet(viewsets.ModelViewSet):
         self.get_object().delete()
         return success_response(message=f"{self.basename.title()} deleted successfully")
 
- 
+    
     def get_permissions(self):
+        # Public GET requests (list & retrieve)
+        if self.action in ["list", "retrieve"]:
+            return [AllowAny()]
+    
+        user = self.request.user
+    
+        # ✅ Block completely if not logged in (except GETs handled above)
+        if not user or not user.is_authenticated:
+            return [IsAuthenticated()]
+    
+        # ✅ SuperAdmin → full CRUD anywhere
+        if user.role == "superadmin":
+            return [IsAuthenticated(), IsSuperAdmin()]
+    
+        # ✅ SEO full CRUD only on MetaPixelCode
+        if user.role == "seo" and self.basename == "meta-pixel-code":
+            return [IsAuthenticated(), IsSEOFullOnMetaPixel()]
+    
+        # ✅ SEO read-only only on Page (but this is redundant since GET is public now)
+        if user.role == "seo" and self.basename == "page":
+            return [IsSEOReadOnlyOnPage()]
+    
+        # ❌ Everyone else forbidden
         return [IsAuthenticated(), IsSuperAdmin()]
 
 # ==========================
@@ -110,9 +133,6 @@ class PageViewSet(BaseViewSet):
     serializer_class = PageSerializer
     lookup_field = "id"
     lookup_url_kwarg = "slug"
-
-    def get_permissions(self):
-        return [IsAuthenticated(), (IsSuperAdmin() or IsSEOReadOnly())]
     
 
     def get_queryset(self):
@@ -569,3 +589,13 @@ class SectionOrderListAPIView(APIView):
             "count": qs.count(),
             "data": serializer.data
         })
+    
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:  # GET, HEAD, OPTIONS
+            return [AllowAny()]  # anyone can view
+        
+
+class MetaPixelCodeViewSet(BaseViewSet):
+    queryset = MetaPixelCode.objects.all()
+    serializer_class = MetaPixelCodeSerializer
+    basename = "meta-pixel-code"

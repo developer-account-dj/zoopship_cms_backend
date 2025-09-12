@@ -2,8 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from .models import (
-    Page, FAQ, BlogPost, Banner, HowItWorks,PageSection,
-    Impression, Feature, ContactInfo, Slide, SliderBanner,Section,SectionType
+    Page, MetaPixelCode,PageSection,Section,
 )
 User = get_user_model()
 from django.db.models import F,Max
@@ -477,6 +476,128 @@ class SectionOrderSerializer(serializers.ModelSerializer):
         mapping = self.get_mapping(obj)
         return mapping.order if mapping else None
     
+
+
+
+# class MetaPixelCodeSerializer(serializers.ModelSerializer):
+#     # For input (write-only)
+#     page_id = serializers.CharField(write_only=True, required=False)
+#     page_slug = serializers.CharField(write_only=True, required=False)
+
+#     # For output (read-only)
+#     page_id = serializers.SerializerMethodField(read_only=True)
+#     page_slug = serializers.SerializerMethodField(read_only=True)
+
+#     class Meta:
+#         model = MetaPixelCode
+#         fields = [
+#             "id",
+#             "page_id",
+#             "page_slug",
+#             "add_title_meta",
+#             "google_pixel_code",
+#             "facebook_pixel_code",
+#             "other_pixel_code",
+#             "custom_pixel_code",
+#             "created_at",
+#             "updated_at",
+#         ]
+
+#     def get_page_id(self, obj):
+#         return obj.page.id if obj.page else None
+
+#     def get_page_slug(self, obj):
+#         return obj.page.slug if obj.page else None
+
+#     def validate(self, attrs):
+#         page_id = self.initial_data.get("page_id")
+#         page_slug = self.initial_data.get("page_slug")
+
+#         if not page_id and not page_slug:
+#             raise serializers.ValidationError("Either page_id or page_slug is required.")
+
+#         try:
+#             if page_id:
+#                 page = Page.objects.get(id=page_id)
+#             else:
+#                 page = Page.objects.get(slug=page_slug)
+#         except Page.DoesNotExist:
+#             raise serializers.ValidationError("Page not found.")
+
+#         attrs["page"] = page
+#         return attrs
+
+#     def create(self, validated_data):
+#         validated_data.pop("page_id", None)
+#         validated_data.pop("page_slug", None)
+#         return super().create(validated_data)
+
+#     def update(self, instance, validated_data):
+#         validated_data.pop("page_id", None)
+#         validated_data.pop("page_slug", None)
+#         return super().update(instance, validated_data)
+
+class MetaPixelCodeSerializer(serializers.ModelSerializer):
+    page_id = serializers.CharField(write_only=True, required=False)
+    page_slug = serializers.CharField(write_only=True, required=False)
+
+    page_id = serializers.SerializerMethodField(read_only=True)
+    page_slug = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = MetaPixelCode
+        fields = [
+            "id",
+            "page_id",
+            "page_slug",
+            "add_title_meta",
+            "google_pixel_code",
+            "facebook_pixel_code",
+            "other_pixel_code",
+            "custom_pixel_code",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_page_id(self, obj):
+        return obj.page.id if obj.page else None
+
+    def get_page_slug(self, obj):
+        return obj.page.slug if obj.page else None
+
+    def validate(self, attrs):
+        page_id = self.initial_data.get("page_id")
+        page_slug = self.initial_data.get("page_slug")
+
+        if not page_id and not page_slug:
+            raise serializers.ValidationError("Either page_id or page_slug is required.")
+
+        try:
+            if page_id:
+                page = Page.objects.get(id=page_id)
+            else:
+                page = Page.objects.get(slug=page_slug)
+        except Page.DoesNotExist:
+            raise serializers.ValidationError("Page not found.")
+
+        attrs["page"] = page
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("page_id", None)
+        validated_data.pop("page_slug", None)
+
+        page = validated_data["page"]
+
+        # ✅ Upsert logic
+        obj, created = MetaPixelCode.objects.update_or_create(
+            page=page,
+            defaults=validated_data
+        )
+        return obj
+
+
+
 
 
 class PageMiniSerializer(serializers.ModelSerializer):

@@ -5,10 +5,21 @@ class IsSuperAdmin(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == "superadmin"
 
-class IsSEOReadOnly(BasePermission):
+
+class IsSEOFullOnMetaPixel(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
             and request.user.role == "seo"
-            and request.method in SAFE_METHODS  # only GET, HEAD, OPTIONS
+            and view.basename == "meta-pixel-code"
+        )
+
+
+class IsSEOReadOnlyOnPage(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == "seo"
+            and view.basename == "page"
+            and request.method in SAFE_METHODS
         )
