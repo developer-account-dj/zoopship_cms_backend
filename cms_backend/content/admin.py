@@ -93,3 +93,8 @@ class MetaPixelCodeAdmin(admin.ModelAdmin):
     search_fields = ('page__title', 'add_title_meta', 'google_pixel_code', 'facebook_pixel_code')
     list_filter = ('page',)
     ordering = ('page',)
+
+
+admin.site.site_header = "ZoopShip CMS"
+admin.site.site_title = "ZoopShip Admin Portal"
+admin.site.index_title = "Welcome to ZoopShip CMS Dashboard"
